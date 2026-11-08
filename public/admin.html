@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>จัดการคิว มูนนอส</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7fa;--card:#fff;--ink:#0b1b34;--mut:#566078;--line:#dfe3ea;--acc:#a67a22}
+@media(prefers-color-scheme:dark){:root{--bg:#0a1222;--card:#111c35;--ink:#eef1f6;--mut:#9aa6bd;--line:#1f2c4a;--acc:#d9b25f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,"Noto Sans Thai",sans-serif;padding:16px}
+main{max-width:720px;margin:0 auto;display:grid;gap:16px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:0 0 10px}
+input,button{font:inherit;min-height:48px;border-radius:10px;border:1.5px solid var(--line);padding:8px 12px;background:var(--card);color:var(--ink)}
+button{cursor:pointer;font-weight:600}
+.p{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}.d{color:#b3261e}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:140px}
+.s{padding:12px 0;border-top:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.b{padding:10px 0;border-top:1px dashed var(--line)}.m{color:var(--mut);font-size:.92rem}.x{opacity:.5;text-decoration:line-through}
+#msg{min-height:1.4em;margin:8px 0 0}
+.lnk{display:inline-flex;align-items:center;min-height:48px;padding:8px 14px;border-radius:10px;border:1.5px solid var(--line);color:inherit;text-decoration:none;font-weight:600;background:var(--card)}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const app = document.getElementById("app");
+let token = sessionStorage.getItem("t") || "";
+function el(tag, cls, text, attrs) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+const todayStr = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const TH = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+};
+async function api(path, opt) {
+  const o = opt || {};
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const r = await fetch(path, { method: o.method || "GET", headers, body: o.body });
+  if (r.status === 401 && path !== "/api/admin/login") { token = ""; sessionStorage.removeItem("t"); showLogin(); throw new Error("401"); }
+  return r.json();
+}
+function showLogin() {
+  app.textContent = "";
+  const c = el("div", "c"), f = el("form", "row"), pw = el("input", "grow", null, { type: "password", placeholder: "รหัสผ่านแอดมิน", autocomplete: "current-password", required: "" });
+  const b = el("button", "p", "เข้าสู่ระบบ", { type: "submit" }), m = el("p", "m", "");
+  f.append(pw, b);
+  f.onsubmit = async (e) => {
+    e.preventDefault(); m.textContent = "";
+    const r = await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password: pw.value }) });
+    if (r.ok) { token = r.token; sessionStorage.setItem("t", token); showMain(); }
+    else m.textContent = r.error === "too_many" ? "ลองผิดหลายครั้งเกินไป กรุณารอ 15 นาที" : "รหัสผ่านไม่ถูกต้อง";
+  };
+  c.append(el("h1", null, "จัดการคิว มูนนอส"), f, m);
+  app.append(c);
+}
+function showMain() {
+  app.textContent = "";
+  const head = el("div", "top"), out = el("button", null, "ออกจากระบบ", { type: "button" });
+  out.onclick = () => { token = ""; sessionStorage.removeItem("t"); showLogin(); };
+  const docs = el("a", "lnk", "ใบเสนอราคา / ใบวางบิล", { href: "/docs" }), nav = el("div", "row");
+  nav.append(docs, out);
+  head.append(el("h1", null, "จัดการคิว มูนนอส"), nav);
+
+  const add = el("div", "c"), f = el("form", "row");
+  const date = el("input", "grow", null, { type: "date", required: "", min: todayStr(), "aria-label": "วันที่" });
+  const cap = el("input", null, null, { type: "number", min: "0", max: "100", value: "5", style: "width:90px", "aria-label": "จำนวนคิว" });
+  const save = el("button", "p", "เปิด/บันทึกวัน", { type: "submit" }), msg = el("p", "m", "", { id: "msg" });
+  f.append(date, cap, save);
+  f.onsubmit = async (e) => {
+    e.preventDefault(); msg.textContent = "";
+    const r = await api("/api/admin/slots", { method: "PUT", body: JSON.stringify({ date: date.value, capacity: Number(cap.value) }) });
+    msg.textContent = r.ok ? "บันทึกแล้ว" : "บันทึกไม่สำเร็จ กรุณาตรวจวันที่และจำนวนคิว";
+    if (r.ok) load();
+  };
+  add.append(el("h2", null, "เปิดวันรับคิว"), f, el("p", "m", "ใส่จำนวนคิวต่อวัน (ใส่ 0 เพื่อปิดรับวันนั้น) ถ้าเลือกวันที่เคยเปิดไว้แล้ว จะเป็นการแก้จำนวนคิว"), msg);
+
+  const list = el("div", "c");
+  app.append(head, add, list);
+
+  async function load() {
+    list.textContent = "";
+    list.append(el("h2", null, "วันที่เปิดรับ"));
+    const r = await api("/api/admin/slots");
+    if (!r.slots.length) { list.append(el("p", "m", "ยังไม่มีวันที่เปิดรับ")); return; }
+    r.slots.forEach((s) => {
+      const box = el("div", "s"), top = el("div", "top"), l = el("div"), btns = el("div", "row"), det = el("div");
+      l.append(el("strong", null, TH(s.date)), el("div", "m", s.capacity > 0 ? "จอง " + s.used + " / " + s.capacity + " คน" : "ปิดรับ (จองแล้ว " + s.used + " คน)"));
+      const view = el("button", null, "ดูรายชื่อ", { type: "button" });
+      const edit = el("button", null, "แก้จำนวน", { type: "button" });
+      const del = el("button", "d", "ลบวัน", { type: "button" });
+      view.onclick = async () => {
+        if (det.textContent) { det.textContent = ""; return; }
+        const b = await api("/api/admin/bookings?date=" + s.date);
+        if (!b.bookings.length) det.append(el("p", "m", "ยังไม่มีผู้จอง"));
+        b.bookings.forEach((x) => {
+          const row = el("div", "b" + (x.status === "active" ? "" : " x"));
+          row.append(el("strong", null, x.name));
+          const tel = el("a", null, " " + x.phone, { href: "tel:" + x.phone });
+          row.append(tel);
+          if (x.line) row.append(el("div", "m", "LINE: " + x.line));
+          if (x.note) row.append(el("div", "m", "หมายเหตุ: " + x.note));
+          if (x.status === "active") {
+            const c = el("button", "d", "ยกเลิกคิว", { type: "button" });
+            c.onclick = async () => { if (confirm("ยกเลิกคิวของ " + x.name + " ?")) { await api("/api/admin/bookings/" + x.id + "/cancel", { method: "POST" }); load(); } };
+            row.append(c);
+          } else row.append(el("div", "m", "ยกเลิกแล้ว"));
+          det.append(row);
+        });
+      };
+      edit.onclick = async () => {
+        const v = prompt("จำนวนคิวสูงสุดของวันนี้ (0 = ปิดรับ)", String(s.capacity));
+        if (v === null) return;
+        const r2 = await api("/api/admin/slots", { method: "PUT", body: JSON.stringify({ date: s.date, capacity: Number(v) }) });
+        if (!r2.ok) alert("บันทึกไม่สำเร็จ ใส่ตัวเลข 0-100"); else load();
+      };
+      del.onclick = async () => {
+        if (!confirm("ลบวัน " + TH(s.date) + " ?")) return;
+        const r2 = await fetch("/api/admin/slots/" + s.date, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+        const j = await r2.json();
+        if (!j.ok) alert(j.error === "has_bookings" ? "ลบไม่ได้ เพราะมีผู้จองอยู่ ให้ยกเลิกคิวทั้งหมดก่อน หรือแก้จำนวนเป็น 0 เพื่อปิดรับ" : "ลบไม่สำเร็จ"); else load();
+      };
+      btns.append(view, edit, del);
+      top.append(l, btns);
+      box.append(top, det);
+      list.append(box);
+    });
+  }
+  load();
+}
+if (token) showMain(); else showLogin();
+</script>
+</body>
+</html>
