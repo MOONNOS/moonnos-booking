@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>เอกสาร มูนนอส</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7fa;--card:#fff;--ink:#0b1b34;--mut:#566078;--line:#dfe3ea;--acc:#a67a22}
+@media(prefers-color-scheme:dark){:root{--bg:#0a1222;--card:#111c35;--ink:#eef1f6;--mut:#9aa6bd;--line:#1f2c4a;--acc:#d9b25f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,"Noto Sans Thai",sans-serif;padding:16px}
+main{max-width:760px;margin:0 auto;display:grid;gap:16px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:0 0 10px}
+input,textarea,select,button,.lnk{font:inherit;min-height:48px;border-radius:10px;border:1.5px solid var(--line);padding:8px 12px;background:var(--card);color:var(--ink)}
+textarea{min-height:84px;width:100%}input{width:100%}
+button,.lnk{cursor:pointer;font-weight:600}
+.lnk{display:inline-flex;align-items:center;text-decoration:none}
+.p{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}.d{color:#b3261e}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.tabs button[aria-pressed="true"]{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}
+.fld{display:grid;gap:4px;margin-bottom:12px}.fld label{font-weight:600;font-size:.95rem}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.irow{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px;display:grid;gap:8px}
+.irow .r2{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+.amt{font-weight:600;text-align:right;min-width:90px}
+.m{color:var(--mut);font-size:.92rem}
+.doc{padding:12px 0;border-top:1px solid var(--line)}
+.sum{display:grid;gap:4px;justify-items:end;margin:8px 0}.sum b{font-size:1.2rem}
+#msg{min-height:1.4em}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const app = document.getElementById("app");
+let token = sessionStorage.getItem("t") || "";
+if (!token) location.href = "/admin";
+function el(tag, cls, text, attrs) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const THD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }); };
+const LABEL = { quotation: "ใบเสนอราคา", billing: "ใบวางบิล" };
+const STATUS = { draft: "ร่าง", sent: "ส่งแล้ว", accepted: "ลูกค้าตกลง", rejected: "ลูกค้าปฏิเสธ", cancelled: "ยกเลิก", unpaid: "ยังไม่ชำระ", paid: "ชำระแล้ว" };
+const SETS = { quotation: ["draft", "sent", "accepted", "rejected", "cancelled"], billing: ["unpaid", "paid", "cancelled"] };
+const ERRTXT = { items: "กรุณากรอกรายการให้ครบ (ชื่อรายการ จำนวนมากกว่า 0 และราคา)", customer: "กรุณากรอกชื่อลูกค้า", date: "วันที่ไม่ถูกต้อง", amount: "ส่วนลดหรือภาษีไม่ถูกต้อง" };
+let tab = "quotation", settings = null, flash = "";
+
+async function api(path, opt) {
+  const o = opt || {};
+  const r = await fetch(path, { method: o.method || "GET", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: o.body });
+  if (r.status === 401) { sessionStorage.removeItem("t"); location.href = "/admin"; throw new Error("401"); }
+  return r.json();
+}
+async function loadSettings() { if (!settings) settings = (await api("/api/admin/settings")).settings; return settings; }
+
+function shell(content) {
+  app.textContent = "";
+  const head = el("div", "top"), nav = el("div", "row");
+  nav.append(el("a", "lnk", "← จัดการคิว", { href: "/admin" }));
+  head.append(el("h1", null, "เอกสาร มูนนอส"), nav);
+  const tabs = el("div", "row tabs");
+  [["quotation", "ใบเสนอราคา"], ["billing", "ใบวางบิล"], ["settings", "ตั้งค่าข้อมูลร้าน"]].forEach(([k, l]) => {
+    const b = el("button", null, l, { type: "button", "aria-pressed": String(tab === k) });
+    b.onclick = () => { tab = k; flash = ""; show(); };
+    tabs.append(b);
+  });
+  app.append(head, tabs, content);
+}
+
+async function show() {
+  if (tab === "settings") return showSettings();
+  const box = el("div", "c");
+  shell(box);
+  const top = el("div", "top"), add = el("button", "p", "+ สร้าง" + LABEL[tab], { type: "button" });
+  add.onclick = () => showForm(tab, null);
+  top.append(el("h2", null, LABEL[tab]), add);
+  box.append(top);
+  if (flash) box.append(el("p", "m", flash));
+  const r = await api("/api/admin/docs?type=" + tab);
+  if (!r.docs.length) box.append(el("p", "m", "ยังไม่มีเอกสาร"));
+  r.docs.forEach((d) => {
+    const row = el("div", "doc"), t = el("div", "top"), l = el("div"), acts = el("div", "row");
+    l.append(el("strong", null, d.number), el("div", "m", d.customer_name + " · " + THD(d.issue_date) + " · " + money(d.total) + " บาท"));
+    if (d.ref_number) l.append(el("div", "m", "อ้างอิง " + d.ref_number));
+    const sel = el("select", null, null, { "aria-label": "สถานะ" });
+    SETS[d.type].forEach((s) => { const o = el("option", null, STATUS[s], { value: s }); if (s === d.status) o.selected = true; sel.append(o); });
+    sel.onchange = async () => { await api("/api/admin/docs/" + d.id + "/status", { method: "POST", body: JSON.stringify({ status: sel.value }) }); };
+    const pr = el("a", "lnk", "เปิด/พิมพ์", { href: "/doc?id=" + d.id, target: "_blank" });
+    const ed = el("button", null, "แก้ไข", { type: "button" });
+    ed.onclick = () => showForm(d.type, d.id);
+    acts.append(sel, pr, ed);
+    if (d.type === "quotation") {
+      const tb = el("button", null, "สร้างใบวางบิล", { type: "button" });
+      tb.onclick = async () => {
+        if (!confirm("สร้างใบวางบิลจากใบเสนอราคา " + d.number + " ?")) return;
+        const x = await api("/api/admin/docs/" + d.id + "/to-billing", { method: "POST", body: "{}" });
+        if (x.ok) { tab = "billing"; flash = "สร้างใบวางบิลเลขที่ " + x.number + " แล้ว (ตรวจรายการและกำหนดชำระได้โดยกดแก้ไข)"; show(); } else alert("สร้างไม่สำเร็จ");
+      };
+      acts.append(tb);
+    }
+    t.append(l, acts); row.append(t); box.append(row);
+  });
+}
+
+function field(label, input) {
+  const d = el("div", "fld"), id = "f" + Math.random().toString(36).slice(2, 8);
+  input.id = id; d.append(el("label", null, label, { for: id }), input);
+  return d;
+}
+
+async function showForm(type, id) {
+  const st = await loadSettings();
+  let d = { issue_date: today(), end_date: "", customer_name: "", customer_address: "", customer_tax_id: "", customer_phone: "", items: [{ description: "", qty: 1, price: 0 }], discount: 0, vat_percent: Number(st.default_vat || 0), notes: "", ref_number: "" };
+  if (id) { const r = await api("/api/admin/docs/" + id); d = r.doc; type = d.type; d.end_date = d.end_date || ""; d.ref_number = d.ref_number || ""; d.notes = d.notes || ""; }
+  tab = type;
+  const box = el("div", "c"), form = el("form"), msg = el("p", "m", "", { id: "msg" });
+  const inp = (v, a) => { const i = el("input", null, null, a || {}); i.value = v == null ? "" : v; return i; };
+  const name = inp(d.customer_name, { required: "", maxlength: "120" });
+  const addr = el("textarea", null, null, { maxlength: "300" }); addr.value = d.customer_address || "";
+  const tax = inp(d.customer_tax_id, { maxlength: "30" }), tel = inp(d.customer_phone, { maxlength: "30", type: "tel" });
+  const idate = inp(d.issue_date, { type: "date", required: "" }), edate = inp(d.end_date, { type: "date" });
+  const ref = inp(d.ref_number, { maxlength: "40" });
+  const disc = inp(d.discount, { type: "number", step: "any", min: "0", inputmode: "decimal" });
+  const vat = inp(d.vat_percent, { type: "number", step: "any", min: "0", max: "100", inputmode: "decimal" });
+  const notes = el("textarea", null, null, { maxlength: "1000" }); notes.value = d.notes || "";
+  const itemsBox = el("div"), rows = [], sum = el("div", "sum");
+
+  const sat = (n) => Math.round(Number(n || 0) * 100);
+  function recalc() {
+    const sub = rows.reduce((a, r) => a + Math.round(Number(r.q.value || 0) * sat(r.p.value)), 0);
+    const dc = Math.min(sat(disc.value), sub), base = sub - dc, v = Math.round(base * Number(vat.value || 0) / 100);
+    sum.textContent = "";
+    sum.append(el("div", "m", "รวมเป็นเงิน " + money(sub / 100) + " บาท"));
+    if (dc) sum.append(el("div", "m", "ส่วนลด " + money(dc / 100) + " บาท"));
+    if (v) sum.append(el("div", "m", "ภาษีมูลค่าเพิ่ม " + money(v / 100) + " บาท"));
+    sum.append(el("b", null, "รวมทั้งสิ้น " + money((base + v) / 100) + " บาท"));
+  }
+  function addRow(it) {
+    const row = el("div", "irow"), ds = inp(it.description, { placeholder: "รายการ เช่น แปลทะเบียนสมรส", maxlength: "200", "aria-label": "รายการ" });
+    const q = inp(it.qty, { type: "number", step: "any", min: "0", inputmode: "decimal", placeholder: "จำนวน", "aria-label": "จำนวน" });
+    const p = inp(it.price, { type: "number", step: "any", min: "0", inputmode: "decimal", placeholder: "ราคา/หน่วย", "aria-label": "ราคาต่อหน่วย" });
+    const amt = el("div", "amt"), rm = el("button", "d", "ลบ", { type: "button" }), r2 = el("div", "r2"), r = { ds, q, p };
+    const upd = () => { amt.textContent = money(Number(q.value || 0) * Number(p.value || 0)); recalc(); };
+    [ds, q, p].forEach((x) => (x.oninput = upd));
+    rm.onclick = () => { if (rows.length > 1) { rows.splice(rows.indexOf(r), 1); row.remove(); recalc(); } };
+    r2.append(q, p, amt); row.append(ds, r2, rm); rows.push(r); itemsBox.append(row); upd();
+  }
+  d.items.forEach(addRow);
+  [disc, vat].forEach((x) => (x.oninput = recalc));
+  const more = el("button", null, "+ เพิ่มรายการ", { type: "button" });
+  more.onclick = () => addRow({ description: "", qty: 1, price: 0 });
+
+  const g1 = el("div", "g2"), g2 = el("div", "g2");
+  g1.append(field("วันที่ออกเอกสาร", idate), field(type === "quotation" ? "ใช้ได้ถึงวันที่ (ถ้ามี)" : "กำหนดชำระ (ถ้ามี)", edate));
+  g2.append(field("ส่วนลด (บาท)", disc), field("ภาษีมูลค่าเพิ่ม (%) ใส่ 0 ถ้าไม่มี", vat));
+  const save = el("button", "p", "บันทึก", { type: "submit" }), cancel = el("button", null, "ยกเลิก", { type: "button" });
+  cancel.onclick = () => show();
+  const g0 = el("div", "g2"); g0.append(field("เลขประจำตัวผู้เสียภาษีลูกค้า (ถ้ามี)", tax), field("เบอร์โทรลูกค้า", tel));
+  form.append(field("ชื่อลูกค้า", name), field("ที่อยู่ลูกค้า", addr), g0, g1);
+  if (type === "billing") form.append(field("อ้างอิงเลขที่ใบเสนอราคา (ถ้ามี)", ref));
+  form.append(el("h2", null, "รายการ"), itemsBox, more, g2, sum, field("หมายเหตุ", notes), msg);
+  const btns = el("div", "row"); btns.append(save, cancel); form.append(btns);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); msg.textContent = "";
+    const body = { type, customer_name: name.value, customer_address: addr.value, customer_tax_id: tax.value, customer_phone: tel.value, issue_date: idate.value, end_date: edate.value, ref_number: ref.value, discount: Number(disc.value || 0), vat_percent: Number(vat.value || 0), notes: notes.value, items: rows.map((r) => ({ description: r.ds.value, qty: Number(r.q.value), price: Number(r.p.value) })) };
+    const r = await api(id ? "/api/admin/docs/" + id : "/api/admin/docs", { method: id ? "PUT" : "POST", body: JSON.stringify(body) });
+    if (r.ok) { flash = id ? "บันทึกแล้ว" : "สร้างเลขที่ " + r.number + " แล้ว"; show(); } else msg.textContent = ERRTXT[r.error] || "บันทึกไม่สำเร็จ";
+  };
+  box.append(el("h2", null, (id ? "แก้ไข" : "สร้าง") + LABEL[type]), form);
+  shell(box); recalc();
+}
+
+async function showSettings() {
+  settings = null; const st = await loadSettings();
+  const box = el("div", "c"), form = el("form"), msg = el("p", "m", "", { id: "msg" });
+  const mk = (k, label, multi) => { const i = multi ? el("textarea") : el("input"); i.value = st[k] || ""; i.dataset.k = k; return field(label, i); };
+  form.append(mk("business_name", "ชื่อธุรกิจ / ผู้ออกเอกสาร"), mk("business_address", "ที่อยู่", true), mk("business_tax_id", "เลขประจำตัวผู้เสียภาษี (ถ้ามี)"), mk("business_phone", "เบอร์โทร"), mk("payment_info", "ช่องทางชำระเงิน (ขึ้นท้ายเอกสาร เช่น ธนาคาร เลขที่บัญชี ชื่อบัญชี)", true), mk("default_vat", "ภาษีมูลค่าเพิ่มเริ่มต้น (%) ใส่ 0 ถ้าไม่จดทะเบียน"));
+  form.append(el("p", "m", "ข้อมูลเหล่านี้จะขึ้นบนหัวเอกสาร ช่องที่ยังว่างจะแสดงเป็นป้ายสีเหลือง [ ] ในเอกสาร ควรตรวจสอบเรื่องภาษีกับนักบัญชีก่อนใช้งานจริง"), msg);
+  const save = el("button", "p", "บันทึก", { type: "submit" }); form.append(save);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); const b = {};
+    form.querySelectorAll("[data-k]").forEach((i) => (b[i.dataset.k] = i.value));
+    const r = await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(b) });
+    msg.textContent = r.ok ? "บันทึกแล้ว" : "บันทึกไม่สำเร็จ (ภาษีต้องเป็นตัวเลข 0-100)"; if (r.ok) settings = null;
+  };
+  box.append(el("h2", null, "ตั้งค่าข้อมูลร้าน"), form);
+  shell(box);
+}
+
+(async () => {
+  const q = new URLSearchParams(location.search), ed = q.get("edit");
+  if (ed) { await showForm("quotation", Number(ed)); } else show();
+})();
+</script>
+</body>
+</html>
