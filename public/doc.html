@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>เอกสาร มูนนอส</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#e9ecf1;font:15px/1.6 "Sarabun","Noto Sans Thai",Tahoma,sans-serif;color:#111}
+.bar{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #ccd;padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bar a,.bar button{font:inherit;min-height:44px;padding:8px 16px;border-radius:8px;border:1.5px solid #aab;background:#fff;color:#111;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.bar .p{background:#d9b25f;border-color:#d9b25f;font-weight:700;margin-left:auto}
+.page{width:210mm;min-height:297mm;margin:16px auto;background:#fff;padding:14mm;position:relative;box-shadow:0 2px 12px rgba(0,0,0,.15)}
+.head{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #1b2a52;padding-bottom:12px}
+.biz b{font-size:1.3em}.biz div{font-size:.95em}
+.ttl{text-align:right}.ttl h1{margin:0;font-size:1.6em;color:#1b2a52}.ttl small{display:block;color:#555}
+.meta{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:14px 0}
+.box{border:1px solid #bbc;border-radius:6px;padding:10px 12px}
+.box h3{margin:0 0 4px;font-size:.95em;color:#555;font-weight:600}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border:1px solid #bbc;padding:6px 8px;vertical-align:top}
+th{background:#eef0f6;font-weight:600}
+.n{text-align:right;white-space:nowrap}.c{text-align:center}
+.tot{margin-left:auto;width:min(100%,320px);margin-top:8px}
+.tot div{display:flex;justify-content:space-between;padding:4px 8px}
+.tot .g{font-weight:700;font-size:1.15em;border-top:2px solid #1b2a52;background:#eef0f6}
+.txt{margin:10px 0;font-weight:600}
+.sig{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:46px;text-align:center}
+.sig div{border-top:1px solid #333;padding-top:6px}
+.ph{background:#f3e7c9;padding:0 6px;border-radius:5px}
+.wm{position:absolute;inset:0;display:grid;place-items:center;font-size:110px;font-weight:700;color:rgba(200,0,0,.12);transform:rotate(-25deg);pointer-events:none}
+pre{font:inherit;white-space:pre-wrap;margin:0}
+.err{padding:40px 22px;text-align:center}
+@media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0;padding:0}@page{size:A4;margin:14mm}}
+@media(max-width:800px){.page{width:auto;margin:0;padding:16px;box-shadow:none}.head,.meta{display:block}.ttl{text-align:left;margin-top:10px}.sig{gap:12px}}
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div id="app"></div>
+<script>
+const app = document.getElementById("app"), bar = document.getElementById("bar");
+const PHX = /(\[[^\]]+\])/;
+function txt(s) {
+  const f = document.createDocumentFragment();
+  String(s).split(PHX).forEach((p) => {
+    if (!p) return;
+    if (PHX.test(p)) { const e = document.createElement("span"); e.className = "ph"; e.textContent = p; f.append(e); } else f.append(p);
+  });
+  return f;
+}
+function el(tag, cls, text, attrs) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null && text !== "") e.append(txt(text));
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const THD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" }); };
+
+// จำนวนเงินตัวอักษรภาษาไทย
+function bahtText(n) {
+  const D = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"], U = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"];
+  const read = (s, more) => {
+    let o = ""; const L = s.length;
+    for (let i = 0; i < L; i++) {
+      const x = +s[i], p = L - i - 1;
+      if (!x) continue;
+      if (p === 0 && x === 1 && (L > 1 || more)) o += "เอ็ด";
+      else if (p === 1 && x === 2) o += "ยี่สิบ";
+      else if (p === 1 && x === 1) o += "สิบ";
+      else o += D[x] + U[p];
+    }
+    return o;
+  };
+  const intText = (str) => {
+    str = str.replace(/^0+(?=\d)/, "");
+    if (/^0*$/.test(str)) return "ศูนย์";
+    const ch = [];
+    while (str.length > 6) { ch.unshift(str.slice(-6)); str = str.slice(0, -6); }
+    ch.unshift(str);
+    return ch.map((c, i) => { const t = c.replace(/^0+/, ""); return t ? read(t, i > 0) : ""; }).join("ล้าน");
+  };
+  const cents = Math.round(Number(n) * 100), baht = Math.floor(cents / 100), sat = cents % 100;
+  return intText(String(baht)) + "บาท" + (sat ? intText(String(sat)) + "สตางค์" : "ถ้วน");
+}
+
+const TITLE = { quotation: ["ใบเสนอราคา", "Quotation"], billing: ["ใบวางบิล", "Billing Note"] };
+
+async function main() {
+  const token = sessionStorage.getItem("t") || "";
+  const id = new URLSearchParams(location.search).get("id");
+  if (!token || !id) { app.append(el("p", "err", "กรุณาเข้าสู่ระบบที่หน้าแอดมินก่อน")); return; }
+  const h = { Authorization: "Bearer " + token };
+  const [a, b] = await Promise.all([
+    fetch("/api/admin/docs/" + encodeURIComponent(id), { headers: h }).then((r) => r.json()),
+    fetch("/api/admin/settings", { headers: h }).then((r) => r.json()),
+  ]);
+  if (!a.ok) { app.append(el("p", "err", "ไม่พบเอกสาร หรือหมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่ที่หน้าแอดมิน")); return; }
+  const d = a.doc, s = b.settings || {};
+  document.title = d.number;
+
+  const back = el("a", null, "← กลับ", { href: "/docs" }), edit = el("a", null, "แก้ไข", { href: "/docs?edit=" + d.id });
+  const pr = el("button", "p", "พิมพ์ / บันทึกเป็น PDF", { type: "button" });
+  pr.onclick = () => window.print();
+  bar.append(back, edit, pr);
+
+  const T = TITLE[d.type];
+  const page = el("div", "page");
+  if (d.status === "cancelled") page.append(el("div", "wm", "ยกเลิก"));
+
+  const head = el("div", "head"), biz = el("div", "biz"), ttl = el("div", "ttl");
+  biz.append(el("b", null, s.business_name || "[ชื่อธุรกิจ]"), el("div", null, s.business_address || "[ที่อยู่]"));
+  biz.append(el("div", null, "เลขประจำตัวผู้เสียภาษี: " + (s.business_tax_id || "[เลขประจำตัวผู้เสียภาษี]")), el("div", null, "โทร: " + (s.business_phone || "[เบอร์โทร]")));
+  ttl.append(el("h1", null, T[0]), el("small", null, T[1]), el("div", null, "เลขที่: " + d.number), el("div", null, "วันที่: " + THD(d.issue_date)));
+  if (d.end_date) ttl.append(el("div", null, (d.type === "quotation" ? "ใช้ได้ถึงวันที่: " : "กำหนดชำระ: ") + THD(d.end_date)));
+  if (d.ref_number) ttl.append(el("div", null, "อ้างอิงใบเสนอราคา: " + d.ref_number));
+  head.append(biz, ttl);
+
+  const cust = el("div", "box");
+  cust.append(el("h3", null, d.type === "quotation" ? "เสนอราคาให้" : "วางบิลถึง"), el("b", null, d.customer_name));
+  if (d.customer_address) cust.append(el("div", null, d.customer_address));
+  if (d.customer_tax_id) cust.append(el("div", null, "เลขประจำตัวผู้เสียภาษี: " + d.customer_tax_id));
+  if (d.customer_phone) cust.append(el("div", null, "โทร: " + d.customer_phone));
+  const meta = el("div", "meta"); meta.append(cust);
+
+  const tb = el("table"), thead = el("tr");
+  ["ลำดับ", "รายการ", "จำนวน", "ราคา/หน่วย", "จำนวนเงิน"].forEach((x, i) => thead.append(el("th", i === 1 ? null : "c", x)));
+  tb.append(thead);
+  d.items.forEach((it, i) => {
+    const tr = el("tr");
+    tr.append(el("td", "c", String(i + 1)), el("td", null, it.description), el("td", "n", String(it.qty)), el("td", "n", money(it.price)), el("td", "n", money(Math.round(it.qty * Math.round(it.price * 100)) / 100)));
+    tb.append(tr);
+  });
+
+  const tot = el("div", "tot");
+  const line = (l, v, c) => { const r = el("div", c || ""); r.append(el("span", null, l), el("span", null, money(v))); tot.append(r); };
+  line("รวมเป็นเงิน", d.subtotal);
+  if (d.discount > 0) line("ส่วนลด", d.discount);
+  if (d.vat_percent > 0) line("ภาษีมูลค่าเพิ่ม " + d.vat_percent + "%", d.vat_amount);
+  line("รวมทั้งสิ้น", d.total, "g");
+
+  page.append(head, meta, tb, tot, el("div", "txt", "(" + bahtText(d.total) + ")"));
+  if (d.notes) { const n = el("div", "box"); n.append(el("h3", null, "หมายเหตุ"), el("pre", null, d.notes)); page.append(n); }
+  if (s.payment_info) { const n = el("div", "box"); n.style.marginTop = "8px"; n.append(el("h3", null, "ช่องทางชำระเงิน"), el("pre", null, s.payment_info)); page.append(n); }
+  const sig = el("div", "sig");
+  sig.append(el("div", null, d.type === "quotation" ? "ผู้เสนอราคา" : "ผู้วางบิล"), el("div", null, d.type === "quotation" ? "ผู้อนุมัติสั่งซื้อ" : "ผู้รับวางบิล"));
+  page.append(sig);
+  app.append(page);
+}
+main().catch(() => { app.append(el("p", "err", "โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่")); });
+</script>
+</body>
+</html>
