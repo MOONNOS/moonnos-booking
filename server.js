@@ -39,6 +39,9 @@ app.get("/doc", (req, res) => {
   res.set("X-Robots-Tag", "noindex");
   res.sendFile(path.join(__dirname, "public", "doc.html"));
 });
+app.get("/logo.jpg", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "logo.jpg"));
+});
 app.get("/", (req, res) => res.type("text").send("moonnos-booking"));
 
 app.use((err, req, res, next) => {
