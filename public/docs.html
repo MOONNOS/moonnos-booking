@@ -17,7 +17,7 @@ input,textarea,select,button,.lnk{font:inherit;min-height:48px;border-radius:10p
 textarea{min-height:84px;width:100%}input{width:100%}
 button,.lnk{cursor:pointer;font-weight:600}
 .lnk{display:inline-flex;align-items:center;text-decoration:none}
-.p{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}.d{color:#b3261e}
+.p{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}.d{color:#ff8a80}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
 .tabs button[aria-pressed="true"]{background:var(--acc);color:#0c1f3d;border-color:var(--acc)}
 .fld{display:grid;gap:4px;margin-bottom:12px}.fld label{font-weight:600;font-size:.95rem}
@@ -93,10 +93,17 @@ async function show() {
     const sel = el("select", null, null, { "aria-label": "สถานะ" });
     SETS[d.type].forEach((s) => { const o = el("option", null, STATUS[s], { value: s }); if (s === d.status) o.selected = true; sel.append(o); });
     sel.onchange = async () => { await api("/api/admin/docs/" + d.id + "/status", { method: "POST", body: JSON.stringify({ status: sel.value }) }); };
-    const pr = el("a", "lnk", "เปิด/พิมพ์", { href: "/doc?id=" + d.id, target: "_blank" });
+    const pr = el("a", "lnk", "เปิด/พิมพ์", { href: "/doc?id=" + d.id });
     const ed = el("button", null, "แก้ไข", { type: "button" });
     ed.onclick = () => showForm(d.type, d.id);
     acts.append(sel, pr, ed);
+    const del = el("button", "d", "ลบ", { type: "button" });
+    del.onclick = async () => {
+      if (!confirm("ลบ " + d.number + " (" + d.customer_name + ") ถาวร? ลบแล้วกู้คืนไม่ได้")) return;
+      const x = await api("/api/admin/docs/" + d.id, { method: "DELETE" });
+      if (x.ok) { flash = "ลบ " + d.number + " แล้ว"; show(); } else alert("ลบไม่สำเร็จ");
+    };
+    acts.append(del);
     if (d.type === "quotation") {
       const tb = el("button", null, "สร้างใบวางบิล", { type: "button" });
       tb.onclick = async () => {
