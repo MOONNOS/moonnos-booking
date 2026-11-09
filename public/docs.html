@@ -47,9 +47,9 @@ function el(tag, cls, text, attrs) {
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
 const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const THD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }); };
-const LABEL = { quotation: "ใบเสนอราคา", billing: "ใบวางบิล" };
-const STATUS = { draft: "ร่าง", sent: "ส่งแล้ว", accepted: "ลูกค้าตกลง", rejected: "ลูกค้าปฏิเสธ", cancelled: "ยกเลิก", unpaid: "ยังไม่ชำระ", paid: "ชำระแล้ว" };
-const SETS = { quotation: ["draft", "sent", "accepted", "rejected", "cancelled"], billing: ["unpaid", "paid", "cancelled"] };
+const LABEL = { quotation: "ใบเสนอราคา", billing: "ใบวางบิล", receipt: "ใบเสร็จรับเงิน" };
+const STATUS = { draft: "ร่าง", sent: "ส่งแล้ว", accepted: "ลูกค้าตกลง", rejected: "ลูกค้าปฏิเสธ", cancelled: "ยกเลิก", unpaid: "ยังไม่ชำระ", paid: "ชำระแล้ว", issued: "ออกแล้ว" };
+const SETS = { quotation: ["draft", "sent", "accepted", "rejected", "cancelled"], billing: ["unpaid", "paid", "cancelled"], receipt: ["issued", "cancelled"] };
 const ERRTXT = { items: "กรุณากรอกรายการให้ครบ (ชื่อรายการ จำนวนมากกว่า 0 และราคา)", customer: "กรุณากรอกชื่อลูกค้า", date: "วันที่ไม่ถูกต้อง", amount: "ส่วนลดหรือภาษีไม่ถูกต้อง" };
 let tab = "quotation", settings = null, flash = "";
 
@@ -67,7 +67,7 @@ function shell(content) {
   nav.append(el("a", "lnk", "← จัดการคิว", { href: "/admin" }));
   head.append(el("h1", null, "เอกสาร มูนนอส"), nav);
   const tabs = el("div", "row tabs");
-  [["quotation", "ใบเสนอราคา"], ["billing", "ใบวางบิล"], ["settings", "ตั้งค่าข้อมูลร้าน"]].forEach(([k, l]) => {
+  [["quotation", "ใบเสนอราคา"], ["billing", "ใบวางบิล"], ["receipt", "ใบเสร็จรับเงิน"], ["settings", "ตั้งค่าข้อมูลร้าน"]].forEach(([k, l]) => {
     const b = el("button", null, l, { type: "button", "aria-pressed": String(tab === k) });
     b.onclick = () => { tab = k; flash = ""; show(); };
     tabs.append(b);
@@ -112,6 +112,15 @@ async function show() {
         if (x.ok) { tab = "billing"; flash = "สร้างใบวางบิลเลขที่ " + x.number + " แล้ว (ตรวจรายการและกำหนดชำระได้โดยกดแก้ไข)"; show(); } else alert("สร้างไม่สำเร็จ");
       };
       acts.append(tb);
+    }
+    if (d.type === "billing") {
+      const rb = el("button", null, "สร้างใบเสร็จ", { type: "button" });
+      rb.onclick = async () => {
+        if (!confirm("สร้างใบเสร็จรับเงินจากใบวางบิล " + d.number + " ? (ใบวางบิลจะถูกเปลี่ยนเป็น ชำระแล้ว)")) return;
+        const x = await api("/api/admin/docs/" + d.id + "/to-receipt", { method: "POST", body: "{}" });
+        if (x.ok) { tab = "receipt"; flash = "สร้างใบเสร็จเลขที่ " + x.number + " แล้ว"; show(); } else alert("สร้างไม่สำเร็จ");
+      };
+      acts.append(rb);
     }
     t.append(l, acts); row.append(t); box.append(row);
   });
@@ -166,13 +175,15 @@ async function showForm(type, id) {
   more.onclick = () => addRow({ description: "", qty: 1, price: 0 });
 
   const g1 = el("div", "g2"), g2 = el("div", "g2");
-  g1.append(field("วันที่ออกเอกสาร", idate), field(type === "quotation" ? "ใช้ได้ถึงวันที่ (ถ้ามี)" : "กำหนดชำระ (ถ้ามี)", edate));
+  g1.append(field("วันที่ออกเอกสาร", idate));
+  if (type !== "receipt") g1.append(field(type === "quotation" ? "ใช้ได้ถึงวันที่ (ถ้ามี)" : "กำหนดชำระ (ถ้ามี)", edate));
   g2.append(field("ส่วนลด (บาท)", disc), field("ภาษีมูลค่าเพิ่ม (%) ใส่ 0 ถ้าไม่มี", vat));
   const save = el("button", "p", "บันทึก", { type: "submit" }), cancel = el("button", null, "ยกเลิก", { type: "button" });
   cancel.onclick = () => show();
   const g0 = el("div", "g2"); g0.append(field("เลขประจำตัวผู้เสียภาษีลูกค้า (ถ้ามี)", tax), field("เบอร์โทรลูกค้า", tel));
   form.append(field("ชื่อลูกค้า", name), field("ที่อยู่ลูกค้า", addr), g0, g1);
   if (type === "billing") form.append(field("อ้างอิงเลขที่ใบเสนอราคา (ถ้ามี)", ref));
+  if (type === "receipt") form.append(field("อ้างอิงเลขที่ใบวางบิล (ถ้ามี)", ref));
   form.append(el("h2", null, "รายการ"), itemsBox, more, g2, sum, field("หมายเหตุ", notes), msg);
   const btns = el("div", "row"); btns.append(save, cancel); form.append(btns);
   form.onsubmit = async (e) => {
