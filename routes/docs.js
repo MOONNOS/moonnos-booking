@@ -217,4 +217,17 @@ router.post("/docs/:id/to-billing", async (req, res, next) => {
   }
 });
 
+// ลบเอกสาร
+router.delete("/docs/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: "invalid" });
+    const r = await db.execute({ sql: "DELETE FROM documents WHERE id = ?", args: [id] });
+    if (r.rowsAffected !== 1) return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
