@@ -10,6 +10,7 @@ router.use(auth);
 const TYPES = {
   quotation: { prefix: "QT", statuses: ["draft", "sent", "accepted", "rejected", "cancelled"], first: "draft" },
   billing: { prefix: "BN", statuses: ["unpaid", "paid", "cancelled"], first: "unpaid" },
+  receipt: { prefix: "RC", statuses: ["issued", "cancelled"], first: "issued" },
 };
 const SETTING_KEYS = ["business_name", "business_address", "business_tax_id", "business_phone", "payment_info", "default_vat"];
 
@@ -211,6 +212,22 @@ router.post("/docs/:id/to-billing", async (req, res, next) => {
     const c = clean({ ...q, end_date: "", issue_date: today(), notes: "" });
     if (c.error) return res.status(400).json({ ok: false, error: c.error });
     const d = await insertDoc("billing", c.v, q.number);
+    res.json({ ok: true, id: d.id, number: d.number });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// สร้างใบเสร็จรับเงินจากใบวางบิล (คัดลอกลูกค้ากับรายการ และเปลี่ยนใบวางบิลเป็น "ชำระแล้ว")
+router.post("/docs/:id/to-receipt", async (req, res, next) => {
+  try {
+    const r = await db.execute({ sql: "SELECT * FROM documents WHERE id = ? AND type = 'billing'", args: [Number(req.params.id)] });
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+    const b = toDoc(r.rows[0]);
+    const c = clean({ ...b, end_date: "", issue_date: today(), notes: "" });
+    if (c.error) return res.status(400).json({ ok: false, error: c.error });
+    const d = await insertDoc("receipt", c.v, b.number);
+    await db.execute({ sql: "UPDATE documents SET status = 'paid', updated_at = ? WHERE id = ?", args: [new Date().toISOString(), b.id] });
     res.json({ ok: true, id: d.id, number: d.number });
   } catch (e) {
     next(e);
