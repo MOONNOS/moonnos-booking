@@ -1,283 +1,351 @@
-const express = require("express");
-const { db } = require("../db");
-const auth = require("../middleware/auth");
-const { today, isDate } = require("../lib/dates");
-const { calc } = require("../lib/money");
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>เอกสาร มูนนอส</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Trirong:wght@600&display=swap" rel="stylesheet">
+<style>
+/* Moonnos back office : consular seal, instrument register */
+:root{color-scheme:light;--bg:#f6f2ea;--card:#fffcf6;--ink:#14233f;--mut:#5a5f6c;--line:#e3dac7;--soft:#f1e6cc;--acc:#a9802f;--acc2:#c9a14f;--pri:#14233f;--pritx:#fff;--del:#a3261c;--delbg:#fbecea;--field:#fff;
+--serif:"Trirong",Georgia,serif;--sans:"Sarabun","Noto Sans Thai",system-ui,sans-serif}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0d1626;--card:#142038;--ink:#efe9dc;--mut:#a7adbb;--line:#27334c;--soft:#2a2416;--acc:#d6b062;--acc2:#d6b062;--pri:#d6b062;--pritx:#14233f;--del:#ff9a8f;--delbg:#3a1d1d;--field:#0f1a2e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);padding:0 14px 32px}
+main{max-width:780px;margin:0 auto;display:grid;gap:14px}
 
-const router = express.Router();
-router.use(auth);
+/* top bar : brand + nav, sticks while scrolling */
+main>.top:first-child{position:sticky;top:0;z-index:5;background:var(--bg);margin:0 -14px;padding:10px 14px;border-bottom:1px solid var(--line)}
+h1{display:flex;align-items:center;gap:10px;margin:0;font-family:var(--serif);font-weight:600;font-size:1.22rem;line-height:1.3}
+h1::before{content:"";flex:none;width:36px;height:36px;border-radius:50%;background:#fff url(/logo.jpg) center/150% no-repeat;box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--acc2)}
+h2{font-family:var(--serif);font-weight:600;font-size:1.1rem;margin:0 0 10px;line-height:1.4}
 
-const TYPES = {
-  quotation: { prefix: "QT", statuses: ["draft", "sent", "accepted", "rejected", "cancelled"], first: "draft" },
-  billing: { prefix: "BN", statuses: ["unpaid", "paid", "cancelled"], first: "unpaid" },
-  receipt: { prefix: "RC", statuses: ["issued", "cancelled"], first: "issued" },
-};
-const SETTING_KEYS = ["business_name", "business_address", "business_tax_id", "business_phone", "payment_info", "default_vat"];
+/* cards */
+.c{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;box-shadow:0 1px 0 rgba(20,35,63,.03),0 6px 18px -12px rgba(20,35,63,.25)}
+main>.c:only-child{margin-top:12vh;padding:24px 20px;border-top:3px solid var(--acc2)}
+main>.c:only-child h1{margin-bottom:16px}
+.m{color:var(--mut);font-size:.92rem}
+#msg{min-height:1.4em;margin:8px 0 0;font-weight:600;color:var(--acc)}
 
-// ---------- ตั้งค่าข้อมูลร้าน ----------
-router.get("/settings", async (req, res, next) => {
-  try {
-    const r = await db.execute("SELECT key, value FROM settings");
-    const out = {};
-    SETTING_KEYS.forEach((k) => (out[k] = k === "default_vat" ? "0" : ""));
-    r.rows.forEach((x) => { if (SETTING_KEYS.includes(x.key)) out[x.key] = x.value; });
-    res.json({ ok: true, settings: out });
-  } catch (e) {
-    next(e);
-  }
-});
+/* controls */
+input,textarea,select,button,.lnk{font:inherit;font-size:16px;min-height:46px;border-radius:8px;border:1px solid var(--line);padding:8px 12px;background:var(--field);color:var(--ink)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--soft)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+textarea{min-height:84px;width:100%;resize:vertical}
+button,.lnk{cursor:pointer;font-weight:600;background:var(--card)}
+button:hover,.lnk:hover{border-color:var(--acc2)}
+.lnk{display:inline-flex;align-items:center;text-decoration:none;color:var(--ink)}
+.p{background:var(--pri);color:var(--pritx);border-color:var(--pri);box-shadow:inset 0 -3px 0 var(--acc2)}
+.p:hover{border-color:var(--pri);filter:brightness(1.08)}
+.d{color:var(--del);border-color:transparent;background:transparent}
+.d:hover{background:var(--delbg);border-color:var(--del)}
+select{padding-right:8px;font-weight:500}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:140px}
+.top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
 
-router.put("/settings", async (req, res, next) => {
-  try {
-    const b = req.body || {};
-    const stmts = [];
-    for (const k of SETTING_KEYS) {
-      if (b[k] === undefined) continue;
-      let v = String(b[k]).trim().slice(0, 500);
-      if (k === "default_vat") {
-        const n = Number(v || 0);
-        if (!(n >= 0 && n <= 100)) return res.status(400).json({ ok: false, error: "invalid" });
-        v = String(n);
-      }
-      stmts.push({ sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [k, v] });
-    }
-    if (stmts.length) await db.batch(stmts, "write");
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
+/* admin : open days and bookings */
+.s{padding:14px 0;border-top:1px solid var(--line)}
+.s strong{font-size:1.02rem}
+.b{padding:10px 12px;margin-top:8px;border:1px solid var(--line);border-left:3px solid var(--acc2);border-radius:6px;background:var(--bg);display:grid;gap:2px;justify-items:start}
+.b a{color:var(--acc);font-weight:600;text-decoration:none}
+.b button{margin-top:6px;min-height:40px}
+.x{opacity:.55;text-decoration:line-through;border-left-color:var(--line)}
 
-// ---------- ลายเซ็นผู้ลงนาม (เก็บในฐานข้อมูล ไม่อยู่ใน GitHub, เปิดได้เฉพาะแอดมิน) ----------
-const SIGNERS = ["พีรพัฒน์ มีสมนัย", "อัญชลี ลาภทวีสุขสันต์"];
-const SIG_KEYS = SIGNERS.map((n, i) => "sig_" + i);
-const SIG_RE = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
+/* docs : tabs as a segmented control */
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+.tabs button{border:0;background:transparent;min-height:42px;padding:6px 8px;color:var(--mut);border-radius:7px}
+.tabs button[aria-pressed="true"]{background:var(--pri);color:var(--pritx);box-shadow:inset 0 -3px 0 var(--acc2)}
+.doc{padding:14px 0;border-top:1px solid var(--line)}
+.doc strong{font-family:var(--serif);font-weight:600;font-size:1.05rem;letter-spacing:.02em}
+.doc .row{margin-top:8px}
 
-router.get("/signatures", async (req, res, next) => {
-  try {
-    const r = await db.execute({ sql: "SELECT key, value FROM settings WHERE key IN (" + SIG_KEYS.map(() => "?").join(",") + ")", args: SIG_KEYS });
-    const map = {};
-    r.rows.forEach((x) => (map[x.key] = x.value));
-    res.json({ ok: true, signers: SIGNERS.map((name, i) => ({ name, image: map[SIG_KEYS[i]] || "" })) });
-  } catch (e) {
-    next(e);
-  }
-});
+/* docs : form */
+.fld{display:grid;gap:4px;margin-bottom:12px}.fld label{font-weight:600;font-size:.92rem}
+input{width:100%}.row input{width:auto}.row input.grow{width:100%}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.irow{border:1px solid var(--line);border-left:3px solid var(--acc2);border-radius:6px;padding:10px;margin-bottom:10px;display:grid;gap:8px;background:var(--bg)}
+.irow .r2{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+.irow>.d{justify-self:end;min-height:38px;padding:4px 12px}
+.amt{font-weight:700;text-align:right;min-width:90px;font-variant-numeric:tabular-nums}
+.sum{display:grid;gap:2px;justify-items:end;margin:12px 0;padding:12px 14px;border-radius:6px;background:var(--soft);border-top:3px double var(--ink)}
+.sum b{font-family:var(--serif);font-weight:600;font-size:1.25rem}
+form>h2{margin-top:6px;padding-top:14px;border-top:1px solid var(--line)}
+.sgs{display:grid;gap:14px;margin-top:6px}
+.sgrow{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.sgpv{display:grid;place-items:center;min-height:110px;padding:8px;border-radius:6px;background:#fff;background-image:linear-gradient(45deg,#f1ece2 25%,transparent 25%,transparent 75%,#f1ece2 75%),linear-gradient(45deg,#f1ece2 25%,transparent 25%,transparent 75%,#f1ece2 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.sgpv img{max-height:100px;max-width:100%;width:auto}
+.sgup{position:relative;overflow:hidden}.sgup input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
 
-router.put("/signatures/:i", async (req, res, next) => {
-  try {
-    const i = Number(req.params.i);
-    if (!Number.isInteger(i) || i < 0 || i >= SIGNERS.length) return res.status(400).json({ ok: false, error: "invalid" });
-    const image = String((req.body || {}).image || "");
-    if (image && (image.length > 250000 || !SIG_RE.test(image))) return res.status(400).json({ ok: false, error: "invalid" });
-    if (image) {
-      await db.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [SIG_KEYS[i], image] });
-    } else {
-      await db.execute({ sql: "DELETE FROM settings WHERE key = ?", args: [SIG_KEYS[i]] });
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ---------- ตัวช่วย ----------
-function clean(b) {
-  const items = Array.isArray(b.items)
-    ? b.items.slice(0, 50).map((it) => ({
-        description: String((it || {}).description || "").trim().slice(0, 200),
-        qty: Number((it || {}).qty),
-        price: Number((it || {}).price),
-      }))
-    : [];
-  if (!items.length || items.some((it) => !it.description || !(it.qty > 0) || it.qty > 100000 || !(it.price >= 0) || it.price > 10000000)) {
-    return { error: "items" };
-  }
-  const customer_name = String(b.customer_name || "").trim().slice(0, 120);
-  if (!customer_name) return { error: "customer" };
-  const issue_date = String(b.issue_date || "");
-  const end_date = b.end_date ? String(b.end_date) : "";
-  if (!isDate(issue_date) || (end_date && !isDate(end_date))) return { error: "date" };
-  const vat_percent = Number(b.vat_percent || 0);
-  const discount = Number(b.discount || 0);
-  if (!(vat_percent >= 0 && vat_percent <= 100) || !(discount >= 0)) return { error: "amount" };
-  const t = calc(items, discount, vat_percent);
-  return {
-    v: {
-      issue_date,
-      end_date,
-      customer_name,
-      customer_address: String(b.customer_address || "").trim().slice(0, 300),
-      customer_tax_id: String(b.customer_tax_id || "").trim().slice(0, 30),
-      customer_phone: String(b.customer_phone || "").trim().slice(0, 30),
-      items,
-      vat_percent,
-      notes: String(b.notes || "").trim().slice(0, 1000),
-      ...t,
-    },
-  };
+@media(max-width:560px){.g2{grid-template-columns:1fr;gap:0}.irow .r2{grid-template-columns:1fr 1fr}.irow .amt{grid-column:1/-1}}
+@media(min-width:640px){body{padding:0 20px 40px}main>.top:first-child{margin:0 -20px;padding:12px 20px}.tabs{grid-template-columns:repeat(4,1fr)}.c{padding:20px}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const app = document.getElementById("app");
+let token = sessionStorage.getItem("t") || "";
+if (!token) location.href = "/admin";
+function el(tag, cls, text, attrs) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
 }
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const THD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }); };
+const LABEL = { quotation: "ใบเสนอราคา", billing: "ใบวางบิล", receipt: "ใบเสร็จรับเงิน" };
+const STATUS = { draft: "ร่าง", sent: "ส่งแล้ว", accepted: "ลูกค้าตกลง", rejected: "ลูกค้าปฏิเสธ", cancelled: "ยกเลิก", unpaid: "ยังไม่ชำระ", paid: "ชำระแล้ว", issued: "ออกแล้ว" };
+const SETS = { quotation: ["draft", "sent", "accepted", "rejected", "cancelled"], billing: ["unpaid", "paid", "cancelled"], receipt: ["issued", "cancelled"] };
+const ERRTXT = { items: "กรุณากรอกรายการให้ครบ (ชื่อรายการ จำนวนมากกว่า 0 และราคา)", customer: "กรุณากรอกชื่อลูกค้า", date: "วันที่ไม่ถูกต้อง", amount: "ส่วนลดหรือภาษีไม่ถูกต้อง" };
+let tab = "quotation", settings = null, flash = "";
 
-async function nextNumber(type, issueDate) {
-  const prefix = TYPES[type].prefix + "-" + issueDate.slice(0, 4) + "-";
-  const r = await db.execute({
-    sql: "SELECT number FROM documents WHERE type = ? AND number LIKE ? ORDER BY number DESC LIMIT 1",
-    args: [type, prefix + "%"],
+async function api(path, opt) {
+  const o = opt || {};
+  const r = await fetch(path, { method: o.method || "GET", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: o.body });
+  if (r.status === 401) { sessionStorage.removeItem("t"); location.href = "/admin"; throw new Error("401"); }
+  return r.json();
+}
+async function loadSettings() { if (!settings) settings = (await api("/api/admin/settings")).settings; return settings; }
+
+function shell(content) {
+  app.textContent = "";
+  const head = el("div", "top"), nav = el("div", "row");
+  nav.append(el("a", "lnk", "← จัดการคิว", { href: "/admin" }));
+  head.append(el("h1", null, "เอกสาร มูนนอส"), nav);
+  const tabs = el("div", "row tabs");
+  [["quotation", "ใบเสนอราคา"], ["billing", "ใบวางบิล"], ["receipt", "ใบเสร็จรับเงิน"], ["settings", "ตั้งค่าข้อมูลร้าน"]].forEach(([k, l]) => {
+    const b = el("button", null, l, { type: "button", "aria-pressed": String(tab === k) });
+    b.onclick = () => { tab = k; flash = ""; show(); };
+    tabs.append(b);
   });
-  const last = r.rows.length ? Number(String(r.rows[0].number).slice(prefix.length)) : 0;
-  return prefix + String(last + 1).padStart(4, "0");
+  app.append(head, tabs, content);
 }
 
-const INSERT_DOC = `INSERT INTO documents (type, number, issue_date, end_date, customer_name, customer_address, customer_tax_id,
-  customer_phone, items, subtotal, discount, vat_percent, vat_amount, total, notes, ref_number, status, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-async function insertDoc(type, v, ref) {
-  const now = new Date().toISOString();
-  for (let i = 0; i < 3; i++) {
-    const number = await nextNumber(type, v.issue_date);
-    try {
-      const r = await db.execute({
-        sql: INSERT_DOC,
-        args: [type, number, v.issue_date, v.end_date || null, v.customer_name, v.customer_address, v.customer_tax_id,
-          v.customer_phone, JSON.stringify(v.items), v.subtotal, v.discount, v.vat_percent, v.vat_amount, v.total,
-          v.notes, ref || "", TYPES[type].first, now, now],
-      });
-      return { id: Number(r.lastInsertRowid), number };
-    } catch (e) {
-      if (!/UNIQUE/i.test(String(e && e.message))) throw e; // เลขซ้ำ (มีคนสร้างพร้อมกัน) ให้ลองใหม่
+async function show() {
+  if (tab === "settings") return showSettings();
+  const box = el("div", "c");
+  shell(box);
+  const top = el("div", "top"), add = el("button", "p", "+ สร้าง" + LABEL[tab], { type: "button" });
+  add.onclick = () => showForm(tab, null);
+  top.append(el("h2", null, LABEL[tab]), add);
+  box.append(top);
+  if (flash) box.append(el("p", "m", flash));
+  const r = await api("/api/admin/docs?type=" + tab);
+  if (!r.docs.length) box.append(el("p", "m", "ยังไม่มีเอกสาร"));
+  r.docs.forEach((d) => {
+    const row = el("div", "doc"), t = el("div", "top"), l = el("div"), acts = el("div", "row");
+    l.append(el("strong", null, d.number), el("div", "m", d.customer_name + " · " + THD(d.issue_date) + " · " + money(d.total) + " บาท"));
+    if (d.ref_number) l.append(el("div", "m", "อ้างอิง " + d.ref_number));
+    const sel = el("select", null, null, { "aria-label": "สถานะ" });
+    SETS[d.type].forEach((s) => { const o = el("option", null, STATUS[s], { value: s }); if (s === d.status) o.selected = true; sel.append(o); });
+    sel.onchange = async () => { await api("/api/admin/docs/" + d.id + "/status", { method: "POST", body: JSON.stringify({ status: sel.value }) }); };
+    const pr = el("a", "lnk", "เปิด/พิมพ์", { href: "/doc?id=" + d.id });
+    const ed = el("button", null, "แก้ไข", { type: "button" });
+    ed.onclick = () => showForm(d.type, d.id);
+    acts.append(sel, pr, ed);
+    const del = el("button", "d", "ลบ", { type: "button" });
+    del.onclick = async () => {
+      if (!confirm("ลบ " + d.number + " (" + d.customer_name + ") ถาวร? ลบแล้วกู้คืนไม่ได้")) return;
+      const x = await api("/api/admin/docs/" + d.id, { method: "DELETE" });
+      if (x.ok) { flash = "ลบ " + d.number + " แล้ว"; show(); } else alert("ลบไม่สำเร็จ");
+    };
+    acts.append(del);
+    if (d.type === "quotation") {
+      const tb = el("button", null, "สร้างใบวางบิล", { type: "button" });
+      tb.onclick = async () => {
+        if (!confirm("สร้างใบวางบิลจากใบเสนอราคา " + d.number + " ?")) return;
+        const x = await api("/api/admin/docs/" + d.id + "/to-billing", { method: "POST", body: "{}" });
+        if (x.ok) { tab = "billing"; flash = "สร้างใบวางบิลเลขที่ " + x.number + " แล้ว (ตรวจรายการและกำหนดชำระได้โดยกดแก้ไข)"; show(); } else alert("สร้างไม่สำเร็จ");
+      };
+      acts.append(tb);
     }
-  }
-  throw new Error("สร้างเลขที่เอกสารไม่สำเร็จ");
+    if (d.type === "billing") {
+      const rb = el("button", null, "สร้างใบเสร็จ", { type: "button" });
+      rb.onclick = async () => {
+        if (!confirm("สร้างใบเสร็จรับเงินจากใบวางบิล " + d.number + " ? (ใบวางบิลจะถูกเปลี่ยนเป็น ชำระแล้ว)")) return;
+        const x = await api("/api/admin/docs/" + d.id + "/to-receipt", { method: "POST", body: "{}" });
+        if (x.ok) { tab = "receipt"; flash = "สร้างใบเสร็จเลขที่ " + x.number + " แล้ว"; show(); } else alert("สร้างไม่สำเร็จ");
+      };
+      acts.append(rb);
+    }
+    t.append(l, acts); row.append(t); box.append(row);
+  });
 }
 
-const toDoc = (x) => ({
-  ...x,
-  id: Number(x.id),
-  subtotal: Number(x.subtotal),
-  discount: Number(x.discount),
-  vat_percent: Number(x.vat_percent),
-  vat_amount: Number(x.vat_amount),
-  total: Number(x.total),
-  items: JSON.parse(x.items),
-});
+function field(label, input) {
+  const d = el("div", "fld"), id = "f" + Math.random().toString(36).slice(2, 8);
+  input.id = id; d.append(el("label", null, label, { for: id }), input);
+  return d;
+}
 
-// ---------- เอกสาร ----------
-router.get("/docs", async (req, res, next) => {
-  try {
-    const type = String(req.query.type || "");
-    if (!TYPES[type]) return res.status(400).json({ ok: false, error: "invalid" });
-    const r = await db.execute({
-      sql: "SELECT id, type, number, issue_date, end_date, customer_name, total, status, ref_number FROM documents WHERE type = ? ORDER BY id DESC LIMIT 200",
-      args: [type],
+async function showForm(type, id) {
+  const st = await loadSettings();
+  let d = { issue_date: today(), end_date: "", customer_name: "", customer_address: "", customer_tax_id: "", customer_phone: "", items: [{ description: "", qty: 1, price: 0 }], discount: 0, vat_percent: Number(st.default_vat || 0), notes: "", ref_number: "" };
+  if (id) { const r = await api("/api/admin/docs/" + id); d = r.doc; type = d.type; d.end_date = d.end_date || ""; d.ref_number = d.ref_number || ""; d.notes = d.notes || ""; }
+  tab = type;
+  const box = el("div", "c"), form = el("form"), msg = el("p", "m", "", { id: "msg" });
+  const inp = (v, a) => { const i = el("input", null, null, a || {}); i.value = v == null ? "" : v; return i; };
+  const name = inp(d.customer_name, { required: "", maxlength: "120" });
+  const addr = el("textarea", null, null, { maxlength: "300" }); addr.value = d.customer_address || "";
+  const tax = inp(d.customer_tax_id, { maxlength: "30" }), tel = inp(d.customer_phone, { maxlength: "30", type: "tel" });
+  const idate = inp(d.issue_date, { type: "date", required: "" }), edate = inp(d.end_date, { type: "date" });
+  const ref = inp(d.ref_number, { maxlength: "40" });
+  const disc = inp(d.discount, { type: "number", step: "any", min: "0", inputmode: "decimal" });
+  const vat = inp(d.vat_percent, { type: "number", step: "any", min: "0", max: "100", inputmode: "decimal" });
+  const notes = el("textarea", null, null, { maxlength: "1000" }); notes.value = d.notes || "";
+  const itemsBox = el("div"), rows = [], sum = el("div", "sum");
+
+  const sat = (n) => Math.round(Number(n || 0) * 100);
+  function recalc() {
+    const sub = rows.reduce((a, r) => a + Math.round(Number(r.q.value || 0) * sat(r.p.value)), 0);
+    const dc = Math.min(sat(disc.value), sub), base = sub - dc, v = Math.round(base * Number(vat.value || 0) / 100);
+    sum.textContent = "";
+    sum.append(el("div", "m", "รวมเป็นเงิน " + money(sub / 100) + " บาท"));
+    if (dc) sum.append(el("div", "m", "ส่วนลด " + money(dc / 100) + " บาท"));
+    if (v) sum.append(el("div", "m", "ภาษีมูลค่าเพิ่ม " + money(v / 100) + " บาท"));
+    sum.append(el("b", null, "รวมทั้งสิ้น " + money((base + v) / 100) + " บาท"));
+  }
+  function addRow(it) {
+    const row = el("div", "irow"), ds = inp(it.description, { placeholder: "รายการ เช่น แปลทะเบียนสมรส", maxlength: "200", "aria-label": "รายการ" });
+    const q = inp(it.qty, { type: "number", step: "any", min: "0", inputmode: "decimal", placeholder: "จำนวน", "aria-label": "จำนวน" });
+    const p = inp(it.price, { type: "number", step: "any", min: "0", inputmode: "decimal", placeholder: "ราคา/หน่วย", "aria-label": "ราคาต่อหน่วย" });
+    const amt = el("div", "amt"), rm = el("button", "d", "ลบ", { type: "button" }), r2 = el("div", "r2"), r = { ds, q, p };
+    const upd = () => { amt.textContent = money(Number(q.value || 0) * Number(p.value || 0)); recalc(); };
+    [ds, q, p].forEach((x) => (x.oninput = upd));
+    rm.onclick = () => { if (rows.length > 1) { rows.splice(rows.indexOf(r), 1); row.remove(); recalc(); } };
+    r2.append(q, p, amt); row.append(ds, r2, rm); rows.push(r); itemsBox.append(row); upd();
+  }
+  d.items.forEach(addRow);
+  [disc, vat].forEach((x) => (x.oninput = recalc));
+  const more = el("button", null, "+ เพิ่มรายการ", { type: "button" });
+  more.onclick = () => addRow({ description: "", qty: 1, price: 0 });
+
+  const g1 = el("div", "g2"), g2 = el("div", "g2");
+  g1.append(field("วันที่ออกเอกสาร", idate));
+  if (type !== "receipt") g1.append(field(type === "quotation" ? "ใช้ได้ถึงวันที่ (ถ้ามี)" : "กำหนดชำระ (ถ้ามี)", edate));
+  g2.append(field("ส่วนลด (บาท)", disc), field("ภาษีมูลค่าเพิ่ม (%) ใส่ 0 ถ้าไม่มี", vat));
+  const save = el("button", "p", "บันทึก", { type: "submit" }), cancel = el("button", null, "ยกเลิก", { type: "button" });
+  cancel.onclick = () => show();
+  const g0 = el("div", "g2"); g0.append(field("เลขประจำตัวผู้เสียภาษีลูกค้า (ถ้ามี)", tax), field("เบอร์โทรลูกค้า", tel));
+  form.append(field("ชื่อลูกค้า", name), field("ที่อยู่ลูกค้า", addr), g0, g1);
+  if (type === "billing") form.append(field("อ้างอิงเลขที่ใบเสนอราคา (ถ้ามี)", ref));
+  if (type === "receipt") form.append(field("อ้างอิงเลขที่ใบวางบิล (ถ้ามี)", ref));
+  form.append(el("h2", null, "รายการ"), itemsBox, more, g2, sum, field("หมายเหตุ", notes), msg);
+  const btns = el("div", "row"); btns.append(save, cancel); form.append(btns);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); msg.textContent = "";
+    const body = { type, customer_name: name.value, customer_address: addr.value, customer_tax_id: tax.value, customer_phone: tel.value, issue_date: idate.value, end_date: edate.value, ref_number: ref.value, discount: Number(disc.value || 0), vat_percent: Number(vat.value || 0), notes: notes.value, items: rows.map((r) => ({ description: r.ds.value, qty: Number(r.q.value), price: Number(r.p.value) })) };
+    const r = await api(id ? "/api/admin/docs/" + id : "/api/admin/docs", { method: id ? "PUT" : "POST", body: JSON.stringify(body) });
+    if (r.ok) { flash = id ? "บันทึกแล้ว" : "สร้างเลขที่ " + r.number + " แล้ว"; show(); } else msg.textContent = ERRTXT[r.error] || "บันทึกไม่สำเร็จ";
+  };
+  box.append(el("h2", null, (id ? "แก้ไข" : "สร้าง") + LABEL[type]), form);
+  shell(box); recalc();
+}
+
+async function showSettings() {
+  settings = null; const st = await loadSettings();
+  const box = el("div", "c"), form = el("form"), msg = el("p", "m", "", { id: "msg" });
+  const mk = (k, label, multi) => { const i = multi ? el("textarea") : el("input"); i.value = st[k] || ""; i.dataset.k = k; return field(label, i); };
+  form.append(mk("business_name", "ชื่อธุรกิจ / ผู้ออกเอกสาร"), mk("business_address", "ที่อยู่", true), mk("business_tax_id", "เลขประจำตัวผู้เสียภาษี (ถ้ามี)"), mk("business_phone", "เบอร์โทร"), mk("payment_info", "ช่องทางชำระเงิน (ขึ้นท้ายเอกสาร เช่น ธนาคาร เลขที่บัญชี ชื่อบัญชี)", true), mk("default_vat", "ภาษีมูลค่าเพิ่มเริ่มต้น (%) ใส่ 0 ถ้าไม่จดทะเบียน"));
+  form.append(el("p", "m", "ข้อมูลเหล่านี้จะขึ้นบนหัวเอกสาร ช่องที่ยังว่างจะแสดงเป็นป้ายสีเหลือง [ ] ในเอกสาร ควรตรวจสอบเรื่องภาษีกับนักบัญชีก่อนใช้งานจริง"), msg);
+  const save = el("button", "p", "บันทึก", { type: "submit" }); form.append(save);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); const b = {};
+    form.querySelectorAll("[data-k]").forEach((i) => (b[i.dataset.k] = i.value));
+    const r = await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(b) });
+    msg.textContent = r.ok ? "บันทึกแล้ว" : "บันทึกไม่สำเร็จ (ภาษีต้องเป็นตัวเลข 0-100)"; if (r.ok) settings = null;
+  };
+  box.append(el("h2", null, "ตั้งค่าข้อมูลร้าน"), form);
+  shell(box);
+  app.append(await signatureBox());
+}
+
+// ---------- ลายเซ็นผู้ลงนาม ----------
+// แปลงรูปถ่ายลายเซ็นบนกระดาษขาว: ลบพื้นหลังให้โปร่งใส ตัดขอบให้พอดีหมึก แล้วย่อขนาด
+function cleanSignature(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("read")); };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const w = Math.round(img.width * k), h = Math.round(img.height * k);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const g = c.getContext("2d"); g.drawImage(img, 0, 0, w, h);
+      const im = g.getImageData(0, 0, w, h), p = im.data;
+      // หมึกคือจุดที่ "ฟ้า/น้ำเงิน" ชัด หรือ "มืดมาก" (ปากกาดำ) ส่วนเงาและตัวหนังสือจาง ๆ หลังกระดาษจะถูกตัดทิ้ง
+      const xs = [], ys = [];
+      for (let i = 0; i < p.length; i += 4) {
+        const r = p[i], gg = p[i + 1], b = p[i + 2];
+        const lum = 0.299 * r + 0.587 * gg + 0.114 * b, blue = b - (r + gg) / 2;
+        let s = Math.max((85 - lum) / 45, (blue - 12) / 25);
+        s = Math.max(0, Math.min(1, (s - 0.2) / 0.8));
+        p[i] = r * 0.55; p[i + 1] = gg * 0.55; p[i + 2] = Math.min(255, b * 0.85);
+        p[i + 3] = Math.round(s * 255);
+        if (s > 0.5) { const px = (i / 4) % w; xs.push(px); ys.push((i / 4 - px) / w); }
+      }
+      if (xs.length < 30) { reject(new Error("empty")); return; }
+      g.putImageData(im, 0, 0);
+      // ตัดจุดเล็ก ๆ ที่หลุดออกไปไกล (0.3% ริมสุดแต่ละด้าน) ก่อนครอบรูป
+      xs.sort((m, n) => m - n); ys.sort((m, n) => m - n);
+      const q = (arr, f) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * f)))];
+      let x0 = q(xs, 0.003), x1 = q(xs, 0.997), y0 = q(ys, 0.003), y1 = q(ys, 0.997);
+      const pad = 16; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+      const cw = x1 - x0 + 1, ch = y1 - y0 + 1, z = Math.min(1, 600 / cw, 240 / ch);
+      const o = document.createElement("canvas"); o.width = Math.round(cw * z); o.height = Math.round(ch * z);
+      o.getContext("2d").drawImage(c, x0, y0, cw, ch, 0, 0, o.width, o.height);
+      resolve(o.toDataURL("image/png"));
+    };
+    img.src = url;
+  });
+}
+
+async function signatureBox() {
+  const box = el("div", "c"), list = el("div", "sgs");
+  box.append(el("h2", null, "ลายเซ็นผู้ลงนาม"), el("p", "m", "ถ่ายรูปลายเซ็นบนกระดาษขาว แสงสว่าง ไม่มีเงา ระบบจะลบพื้นหลังและตัดขอบให้อัตโนมัติ ลายเซ็นเก็บในฐานข้อมูลของร้าน เปิดดูได้เฉพาะคนที่ล็อกอินแอดมิน"), list);
+  async function load() {
+    list.textContent = "";
+    const r = await api("/api/admin/signatures");
+    (r.signers || []).forEach((sg, i) => {
+      const row = el("div", "sgrow"), pv = el("div", "sgpv"), msg = el("p", "m", "");
+      if (sg.image) { const im = el("img", null, null, { src: sg.image, alt: "ลายเซ็น " + sg.name }); pv.append(im); }
+      else pv.append(el("span", "m", "ยังไม่มีลายเซ็น"));
+      const fi = el("input", null, null, { type: "file", accept: "image/*", "aria-label": "เลือกรูปลายเซ็นของ " + sg.name });
+      const up = el("label", "lnk sgup", sg.image ? "เปลี่ยนรูปลายเซ็น" : "อัปโหลดรูปลายเซ็น"); up.append(fi);
+      const acts = el("div", "row"); acts.append(up);
+      fi.onchange = async () => {
+        const f = fi.files && fi.files[0]; if (!f) return;
+        msg.textContent = "กำลังประมวลผลรูป...";
+        try {
+          const data = await cleanSignature(f);
+          const x = await api("/api/admin/signatures/" + i, { method: "PUT", body: JSON.stringify({ image: data }) });
+          if (!x.ok) { msg.textContent = "บันทึกไม่สำเร็จ รูปอาจใหญ่เกินไป ลองถ่ายใหม่ให้ลายเซ็นเต็มกรอบมากขึ้น"; return; }
+          await load();
+        } catch (e) { msg.textContent = e && e.message === "empty" ? "ไม่พบลายเซ็นในรูป ลองถ่ายใหม่ให้ชัดขึ้น" : "อ่านรูปไม่สำเร็จ ลองเลือกไฟล์ใหม่"; }
+      };
+      if (sg.image) {
+        const del = el("button", "d", "ลบลายเซ็น", { type: "button" });
+        del.onclick = async () => { if (!confirm("ลบลายเซ็นของ " + sg.name + " ?")) return; await api("/api/admin/signatures/" + i, { method: "PUT", body: JSON.stringify({ image: "" }) }); await load(); };
+        acts.append(del);
+      }
+      row.append(el("strong", null, sg.name), pv, acts, msg);
+      list.append(row);
     });
-    res.json({ ok: true, docs: r.rows.map((x) => ({ ...x, id: Number(x.id), total: Number(x.total) })) });
-  } catch (e) {
-    next(e);
   }
-});
+  try { await load(); } catch (e) { list.append(el("p", "m", "โหลดลายเซ็นไม่สำเร็จ")); }
+  return box;
+}
 
-router.get("/docs/:id", async (req, res, next) => {
-  try {
-    const r = await db.execute({ sql: "SELECT * FROM documents WHERE id = ?", args: [Number(req.params.id)] });
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-    res.json({ ok: true, doc: toDoc(r.rows[0]) });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.post("/docs", async (req, res, next) => {
-  try {
-    const b = req.body || {};
-    if (!TYPES[b.type]) return res.status(400).json({ ok: false, error: "invalid" });
-    const c = clean(b);
-    if (c.error) return res.status(400).json({ ok: false, error: c.error });
-    const ref = String(b.ref_number || "").trim().slice(0, 40);
-    const d = await insertDoc(b.type, c.v, ref);
-    res.json({ ok: true, id: d.id, number: d.number });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.put("/docs/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const c = clean(req.body || {});
-    if (c.error) return res.status(400).json({ ok: false, error: c.error });
-    const v = c.v;
-    const r = await db.execute({
-      sql: `UPDATE documents SET issue_date = ?, end_date = ?, customer_name = ?, customer_address = ?, customer_tax_id = ?,
-            customer_phone = ?, items = ?, subtotal = ?, discount = ?, vat_percent = ?, vat_amount = ?, total = ?,
-            notes = ?, ref_number = ?, updated_at = ? WHERE id = ?`,
-      args: [v.issue_date, v.end_date || null, v.customer_name, v.customer_address, v.customer_tax_id, v.customer_phone,
-        JSON.stringify(v.items), v.subtotal, v.discount, v.vat_percent, v.vat_amount, v.total, v.notes,
-        String((req.body || {}).ref_number || "").trim().slice(0, 40), new Date().toISOString(), id],
-    });
-    if (r.rowsAffected !== 1) return res.status(404).json({ ok: false, error: "not_found" });
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.post("/docs/:id/status", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const s = String((req.body || {}).status || "");
-    const r = await db.execute({ sql: "SELECT type FROM documents WHERE id = ?", args: [id] });
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-    if (!TYPES[r.rows[0].type].statuses.includes(s)) return res.status(400).json({ ok: false, error: "invalid" });
-    await db.execute({ sql: "UPDATE documents SET status = ?, updated_at = ? WHERE id = ?", args: [s, new Date().toISOString(), id] });
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// สร้างใบวางบิลจากใบเสนอราคา (คัดลอกลูกค้ากับรายการ)
-router.post("/docs/:id/to-billing", async (req, res, next) => {
-  try {
-    const r = await db.execute({ sql: "SELECT * FROM documents WHERE id = ? AND type = 'quotation'", args: [Number(req.params.id)] });
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-    const q = toDoc(r.rows[0]);
-    const c = clean({ ...q, end_date: "", issue_date: today(), notes: "" });
-    if (c.error) return res.status(400).json({ ok: false, error: c.error });
-    const d = await insertDoc("billing", c.v, q.number);
-    res.json({ ok: true, id: d.id, number: d.number });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// สร้างใบเสร็จรับเงินจากใบวางบิล (คัดลอกลูกค้ากับรายการ และเปลี่ยนใบวางบิลเป็น "ชำระแล้ว")
-router.post("/docs/:id/to-receipt", async (req, res, next) => {
-  try {
-    const r = await db.execute({ sql: "SELECT * FROM documents WHERE id = ? AND type = 'billing'", args: [Number(req.params.id)] });
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-    const b = toDoc(r.rows[0]);
-    const c = clean({ ...b, end_date: "", issue_date: today(), notes: "" });
-    if (c.error) return res.status(400).json({ ok: false, error: c.error });
-    const d = await insertDoc("receipt", c.v, b.number);
-    await db.execute({ sql: "UPDATE documents SET status = 'paid', updated_at = ? WHERE id = ?", args: [new Date().toISOString(), b.id] });
-    res.json({ ok: true, id: d.id, number: d.number });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ลบเอกสาร
-router.delete("/docs/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: "invalid" });
-    const r = await db.execute({ sql: "DELETE FROM documents WHERE id = ?", args: [id] });
-    if (r.rowsAffected !== 1) return res.status(404).json({ ok: false, error: "not_found" });
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
-
-module.exports = router;
+(async () => {
+  const q = new URLSearchParams(location.search), ed = q.get("edit");
+  if (ed) { await showForm("quotation", Number(ed)); } else show();
+})();
+</script>
+</body>
+</html>
