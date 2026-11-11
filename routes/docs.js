@@ -48,6 +48,39 @@ router.put("/settings", async (req, res, next) => {
   }
 });
 
+// ---------- ลายเซ็นผู้ลงนาม (เก็บในฐานข้อมูล ไม่อยู่ใน GitHub, เปิดได้เฉพาะแอดมิน) ----------
+const SIGNERS = ["พีรพัฒน์ มีสมนัย", "อัญชลี ลาภทวีสุขสันต์"];
+const SIG_KEYS = SIGNERS.map((n, i) => "sig_" + i);
+const SIG_RE = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
+
+router.get("/signatures", async (req, res, next) => {
+  try {
+    const r = await db.execute({ sql: "SELECT key, value FROM settings WHERE key IN (" + SIG_KEYS.map(() => "?").join(",") + ")", args: SIG_KEYS });
+    const map = {};
+    r.rows.forEach((x) => (map[x.key] = x.value));
+    res.json({ ok: true, signers: SIGNERS.map((name, i) => ({ name, image: map[SIG_KEYS[i]] || "" })) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/signatures/:i", async (req, res, next) => {
+  try {
+    const i = Number(req.params.i);
+    if (!Number.isInteger(i) || i < 0 || i >= SIGNERS.length) return res.status(400).json({ ok: false, error: "invalid" });
+    const image = String((req.body || {}).image || "");
+    if (image && (image.length > 250000 || !SIG_RE.test(image))) return res.status(400).json({ ok: false, error: "invalid" });
+    if (image) {
+      await db.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [SIG_KEYS[i], image] });
+    } else {
+      await db.execute({ sql: "DELETE FROM settings WHERE key = ?", args: [SIG_KEYS[i]] });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------- ตัวช่วย ----------
 function clean(b) {
   const items = Array.isArray(b.items)
