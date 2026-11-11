@@ -22,8 +22,7 @@ body{margin:0;background:var(--desk);font:15px/1.6 var(--sans);color:#111a2c;-we
 .bar a:hover{border-color:var(--gold2)}.bar .p{background:linear-gradient(180deg,#e0bd72,#c9a14f);border-color:#c9a14f;color:#14233f;font-weight:700;margin-left:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.45)}
 
 /* the A4 sheet */
-.page{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:14mm;position:relative;box-shadow:0 1px 2px rgba(0,0,0,.08),0 14px 40px -12px rgba(0,0,0,.3)}
-.page::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,var(--ink) 0 72%,var(--gold2) 72%)}
+.page{width:210mm;min-height:297mm;margin:18px auto;background:#fff linear-gradient(90deg,var(--ink) 0 72%,var(--gold2) 72%) 0 0/100% 5px no-repeat;padding:14mm;position:relative;box-shadow:0 1px 2px rgba(0,0,0,.08),0 14px 40px -12px rgba(0,0,0,.3)}
 
 /* header */
 .head{display:flex;justify-content:space-between;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--ink);box-shadow:0 3px 0 -2px #fff,0 4px 0 -2px var(--ink)}
@@ -64,14 +63,14 @@ td.c:first-child{color:var(--muted)}
 .sig .sgi[hidden]{display:none}
 .bar .sgl input{width:20px;height:20px;accent-color:#c9a14f}.bar .sgl{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--bartx)}
 .bar select{font:inherit;min-height:44px;padding:6px 10px;border-radius:8px;border:1px solid var(--gold2);background:var(--barbg);color:var(--bartx);cursor:pointer}
-.sig div{border-top:1px solid #333;padding-top:6px;font-weight:600;color:var(--ink)}.sig div::after{content:"วันที่ ........ / ........ / ........";display:block;font-weight:400;color:var(--muted);font-size:.88em;margin-top:6px}
+.sig div{border-top:1px solid #333;padding-top:6px;font-weight:600;color:var(--ink)}.sig .sd{display:block;font-weight:400;color:var(--muted);font-size:.88em;margin-top:6px;white-space:nowrap}
 
 .ph{background:#f1e2b9;padding:0 6px;border-radius:4px}
 .wm{position:absolute;inset:0;display:grid;place-items:center;font-size:110px;font-weight:700;color:rgba(178,40,40,.12);transform:rotate(-25deg);pointer-events:none;font-family:var(--serif);z-index:2}
 pre{font:inherit;white-space:pre-wrap;margin:0}
 .err{padding:40px 22px;text-align:center;color:var(--bartx)}
 
-@media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0;padding:6mm 0 0}.page::before{top:0}@page{size:A4;margin:12mm 14mm}tr,.tot,.sig,.box{break-inside:avoid}}
+@media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0;padding:6mm 0 0}@page{size:A4;margin:12mm 14mm}tr,.tot,.sig,.box{break-inside:avoid}}
 @media screen and (max-width:800px){.page{width:auto;margin:0;padding:22px 16px 16px;box-shadow:none}.head,.meta{display:block}.ttl{text-align:left;margin-top:12px}.sig{gap:14px}.meta .box{margin-bottom:10px}.txt{text-align:left}th,td{padding:7px 6px}}
 </style>
 </head>
@@ -156,7 +155,35 @@ async function main() {
   pick.append(sel);
   const onBox = el("label", "sgl"), chk = document.createElement("input");
   chk.type = "checkbox"; chk.checked = sigOn; onBox.append(chk, "ใส่ลายเซ็น");
-  bar.append(back, edit, pick, onBox, pr);
+  // บันทึกเอกสารเป็นรูป (มือถือ: เปิดหน้าแชร์ ส่ง LINE หรือบันทึกลงคลังรูป / คอม: ดาวน์โหลดไฟล์ .jpg)
+  const shot = el("button", null, "บันทึกเป็นรูป", { type: "button" });
+  const loadShotLib = () => window.html2canvas ? Promise.resolve() : new Promise((ok, bad) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    sc.onload = ok; sc.onerror = bad; document.head.append(sc);
+  });
+  shot.onclick = async () => {
+    const label = shot.textContent;
+    shot.disabled = true; shot.textContent = "กำลังสร้างรูป...";
+    try {
+      await loadShotLib();
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      const cv = await window.html2canvas(page, { scale: 2, backgroundColor: "#ffffff", windowWidth: 1100, useCORS: true, logging: false });
+      const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.92));
+      const file = new File([blob], d.number + ".jpg", { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: d.number }); } catch (e) { if (e && e.name !== "AbortError") throw e; }
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = file.name; document.body.append(a); a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      }
+    } catch (e) {
+      alert("สร้างรูปไม่สำเร็จ กรุณาลองใหม่ (ต้องต่ออินเทอร์เน็ต)");
+    }
+    shot.disabled = false; shot.textContent = label;
+  };
+  bar.append(back, edit, pick, onBox, shot, pr);
 
   const T = TITLE[d.type];
   const page = el("div", "page");
@@ -203,8 +230,8 @@ async function main() {
   const SIG = { quotation: ["ผู้เสนอราคา", "ผู้อนุมัติสั่งซื้อ"], billing: ["ผู้วางบิล", "ผู้รับวางบิล"], receipt: ["ผู้รับเงิน", "ผู้จ่ายเงิน"] }[d.type];
   const sigName = el("span", "sn", "(" + signer + ")"), sigImg = document.createElement("img");
   sigImg.className = "sgi"; sigImg.alt = "";
-  const sigShop = el("div"); sigShop.append(sigImg, sigName, el("span", "sr", SIG[0]));
-  const sigCust = el("div"); sigCust.append(el("span", "sn", "(......................................................)"), el("span", "sr", SIG[1]));
+  const sigShop = el("div"); sigShop.append(sigImg, sigName, el("span", "sr", SIG[0]), el("span", "sd", "วันที่ ........ / ........ / ........"));
+  const sigCust = el("div"); sigCust.append(el("span", "sn", "(......................................................)"), el("span", "sr", SIG[1]), el("span", "sd", "วันที่ ........ / ........ / ........"));
   const drawSig = () => {
     const x = SIGS[SIGNERS.indexOf(signer)] || {};
     sigName.textContent = "(" + signer + ")";
