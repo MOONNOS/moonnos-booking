@@ -57,7 +57,13 @@ td.c:first-child{color:var(--muted)}
 .box+.box{margin-top:8px}
 
 /* signatures */
-.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:48px;text-align:center}
+.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:96px;text-align:center}
+.sig .sn{display:block;font-weight:500;color:#2a3346}.sig .sr{display:block;font-weight:600;margin-top:2px}
+.sig div{position:relative}
+.sig .sgi{position:absolute;left:50%;bottom:calc(100% - 4px);transform:translateX(-50%);max-height:76px;max-width:85%;width:auto;pointer-events:none}
+.sig .sgi[hidden]{display:none}
+.bar .sgl input{width:20px;height:20px;accent-color:#c9a14f}.bar .sgl{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--bartx)}
+.bar select{font:inherit;min-height:44px;padding:6px 10px;border-radius:8px;border:1px solid var(--gold2);background:var(--barbg);color:var(--bartx);cursor:pointer}
 .sig div{border-top:1px solid #333;padding-top:6px;font-weight:600;color:var(--ink)}.sig div::after{content:"วันที่ ........ / ........ / ........";display:block;font-weight:400;color:var(--muted);font-size:.88em;margin-top:6px}
 
 .ph{background:#f1e2b9;padding:0 6px;border-radius:4px}
@@ -127,9 +133,10 @@ async function main() {
   const id = new URLSearchParams(location.search).get("id");
   if (!token || !id) { app.append(el("p", "err", "กรุณาเข้าสู่ระบบที่หน้าแอดมินก่อน")); return; }
   const h = { Authorization: "Bearer " + token };
-  const [a, b] = await Promise.all([
+  const [a, b, sg] = await Promise.all([
     fetch("/api/admin/docs/" + encodeURIComponent(id), { headers: h }).then((r) => r.json()),
     fetch("/api/admin/settings", { headers: h }).then((r) => r.json()),
+    fetch("/api/admin/signatures", { headers: h }).then((r) => r.json()).catch(() => ({})),
   ]);
   if (!a.ok) { app.append(el("p", "err", "ไม่พบเอกสาร หรือหมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่ที่หน้าแอดมิน")); return; }
   const d = a.doc, s = b.settings || {};
@@ -138,7 +145,18 @@ async function main() {
   const back = el("a", null, "← กลับ", { href: "/docs" }), edit = el("a", null, "แก้ไข", { href: "/docs?edit=" + d.id });
   const pr = el("button", "p", "พิมพ์ / บันทึกเป็น PDF", { type: "button" });
   pr.onclick = () => window.print();
-  bar.append(back, edit, pr);
+  // ผู้ลงนามฝั่งร้าน: เลือกได้ 1 คน และเลือกได้ว่าจะใส่ลายเซ็นหรือไม่ (จำค่าล่าสุดไว้ในเครื่องนี้)
+  const SIGS = sg && sg.ok && Array.isArray(sg.signers) ? sg.signers : [{ name: "พีรพัฒน์ มีสมนัย", image: "" }, { name: "อัญชลี ลาภทวีสุขสันต์", image: "" }];
+  const SIGNERS = SIGS.map((x) => x.name);
+  let signer = SIGNERS[0], sigOn = true;
+  try { const v = localStorage.getItem("signer"); if (SIGNERS.indexOf(v) >= 0) signer = v; sigOn = localStorage.getItem("sigon") !== "0"; } catch (e) {}
+  const pick = el("label", "sgl", "ผู้ลงนาม"), sel = document.createElement("select");
+  sel.setAttribute("aria-label", "ผู้ลงนามฝั่งร้าน");
+  SIGNERS.forEach((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n; if (n === signer) o.selected = true; sel.append(o); });
+  pick.append(sel);
+  const onBox = el("label", "sgl"), chk = document.createElement("input");
+  chk.type = "checkbox"; chk.checked = sigOn; onBox.append(chk, "ใส่ลายเซ็น");
+  bar.append(back, edit, pick, onBox, pr);
 
   const T = TITLE[d.type];
   const page = el("div", "page");
@@ -183,7 +201,19 @@ async function main() {
   if (s.payment_info && d.type !== "receipt") { const n = el("div", "box"); n.style.marginTop = "8px"; n.append(el("h3", null, "ช่องทางชำระเงิน"), el("pre", null, s.payment_info)); page.append(n); }
   const sig = el("div", "sig");
   const SIG = { quotation: ["ผู้เสนอราคา", "ผู้อนุมัติสั่งซื้อ"], billing: ["ผู้วางบิล", "ผู้รับวางบิล"], receipt: ["ผู้รับเงิน", "ผู้จ่ายเงิน"] }[d.type];
-  sig.append(el("div", null, SIG[0]), el("div", null, SIG[1]));
+  const sigName = el("span", "sn", "(" + signer + ")"), sigImg = document.createElement("img");
+  sigImg.className = "sgi"; sigImg.alt = "";
+  const sigShop = el("div"); sigShop.append(sigImg, sigName, el("span", "sr", SIG[0]));
+  const sigCust = el("div"); sigCust.append(el("span", "sn", "(......................................................)"), el("span", "sr", SIG[1]));
+  const drawSig = () => {
+    const x = SIGS[SIGNERS.indexOf(signer)] || {};
+    sigName.textContent = "(" + signer + ")";
+    if (sigOn && x.image) { sigImg.src = x.image; sigImg.hidden = false; } else { sigImg.removeAttribute("src"); sigImg.hidden = true; }
+  };
+  sel.onchange = () => { signer = sel.value; try { localStorage.setItem("signer", signer); } catch (e) {} drawSig(); };
+  chk.onchange = () => { sigOn = chk.checked; try { localStorage.setItem("sigon", sigOn ? "1" : "0"); } catch (e) {} drawSig(); };
+  drawSig();
+  sig.append(sigShop, sigCust);
   page.append(sig);
   app.append(page);
 }
