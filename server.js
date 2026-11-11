@@ -20,6 +20,8 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .map((s) => s.trim())
   .filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true }));
+// รูปลายเซ็นมีขนาดใหญ่กว่าข้อมูลทั่วไป จึงให้เส้นทางนี้รับได้ถึง 300kb (ส่วนอื่นยังจำกัด 20kb เหมือนเดิม)
+app.use("/api/admin/signatures", express.json({ limit: "300kb" }));
 app.use(express.json({ limit: "20kb", type: ["application/json", "text/plain"] }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
