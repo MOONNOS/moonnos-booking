@@ -73,6 +73,7 @@ input{width:100%}.row input{width:auto}.row input.grow{width:100%}
 .sum{display:grid;gap:2px;justify-items:end;margin:12px 0;padding:12px 14px;border-radius:6px;background:var(--soft);border-top:3px double var(--ink)}
 .sum b{font-family:var(--serif);font-weight:600;font-size:1.25rem}
 form>h2{margin-top:6px;padding-top:14px;border-top:1px solid var(--line)}
+.dp{display:flex;gap:6px;min-width:0}.dp select{flex:1.3;min-width:0}.dp select:first-child{flex:.7}.dp select:last-child{flex:1.1}
 .sgs{display:grid;gap:14px;margin-top:6px}
 .sgrow{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .sgpv{display:grid;place-items:center;min-height:110px;padding:8px;border-radius:6px;background:#fff;background-image:linear-gradient(45deg,#f1ece2 25%,transparent 25%,transparent 75%,#f1ece2 75%),linear-gradient(45deg,#f1ece2 25%,transparent 25%,transparent 75%,#f1ece2 75%);background-size:16px 16px;background-position:0 0,8px 8px}
@@ -99,6 +100,36 @@ function el(tag, cls, text, attrs) {
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
 const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const THD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }); };
+// ช่องเลือกวันที่แบบไทย: วัน / เดือน / ปี พ.ศ. (ส่งให้เซิร์ฟเวอร์เป็น ค.ศ. YYYY-MM-DD เหมือนเดิม)
+// optional = ปล่อยว่างได้ (เลือก "-" ช่องไหนก็ได้ จะล้างทั้งวันที่)
+const MON = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+function datePick(value, optional) {
+  const [ny, nm, nd] = today().split("-").map(Number);
+  const [vy, vm, vd] = value ? value.split("-").map(Number) : [0, 0, 0];
+  const node = el("div", "dp");
+  const dd = el("select", null, null, { "aria-label": "วัน" }), mm = el("select", null, null, { "aria-label": "เดือน" }), yy = el("select", null, null, { "aria-label": "ปี พ.ศ." });
+  if (optional) { dd.append(new Option("วัน", "")); mm.append(new Option("เดือน", "")); yy.append(new Option("ปี พ.ศ.", "")); }
+  MON.forEach((n, i) => mm.append(new Option(n, String(i + 1))));
+  for (let y = Math.min(vy || ny, ny) - 1; y <= Math.max(vy, ny) + 2; y++) yy.append(new Option("พ.ศ. " + (y + 543), String(y)));
+  const fillDays = () => {
+    const keep = dd.value, n = mm.value && yy.value ? new Date(Number(yy.value), Number(mm.value), 0).getDate() : 31;
+    dd.textContent = "";
+    if (optional) dd.append(new Option("วัน", ""));
+    for (let i = 1; i <= n; i++) dd.append(new Option(String(i), String(i)));
+    dd.value = keep ? String(Math.min(Number(keep), n)) : "";
+  };
+  const set = (y, m, d) => { yy.value = y ? String(y) : ""; mm.value = m ? String(m) : ""; dd.value = d ? String(d) : ""; fillDays(); dd.value = d ? String(Math.min(d, dd.options.length - (optional ? 1 : 0))) : ""; };
+  set(vy || (optional ? 0 : ny), vm || (optional ? 0 : nm), vd || (optional ? 0 : nd));
+  const onPick = (e) => {
+    if (!e.target.value) { set(0, 0, 0); return; }                   // เลือก "-" = ล้างวันที่
+    if (!dd.value || !mm.value || !yy.value) set(Number(yy.value) || ny, Number(mm.value) || nm, Number(dd.value) || nd); // เติมช่องที่ยังว่างให้เอง
+    else fillDays();
+  };
+  [dd, mm, yy].forEach((s) => (s.onchange = onPick));
+  node.append(dd, mm, yy);
+  const p = (n) => String(n).padStart(2, "0");
+  return { node, first: dd, get value() { return dd.value && mm.value && yy.value ? yy.value + "-" + p(mm.value) + "-" + p(dd.value) : ""; } };
+}
 const LABEL = { quotation: "ใบเสนอราคา", billing: "ใบวางบิล", receipt: "ใบเสร็จรับเงิน" };
 const STATUS = { draft: "ร่าง", sent: "ส่งแล้ว", accepted: "ลูกค้าตกลง", rejected: "ลูกค้าปฏิเสธ", cancelled: "ยกเลิก", unpaid: "ยังไม่ชำระ", paid: "ชำระแล้ว", issued: "ออกแล้ว" };
 const SETS = { quotation: ["draft", "sent", "accepted", "rejected", "cancelled"], billing: ["unpaid", "paid", "cancelled"], receipt: ["issued", "cancelled"] };
@@ -180,7 +211,8 @@ async function show() {
 
 function field(label, input) {
   const d = el("div", "fld"), id = "f" + Math.random().toString(36).slice(2, 8);
-  input.id = id; d.append(el("label", null, label, { for: id }), input);
+  if (input.node) { input.first.id = id; input = input.node; } else input.id = id;
+  d.append(el("label", null, label, { for: id }), input);
   return d;
 }
 
@@ -194,7 +226,7 @@ async function showForm(type, id) {
   const name = inp(d.customer_name, { required: "", maxlength: "120" });
   const addr = el("textarea", null, null, { maxlength: "300" }); addr.value = d.customer_address || "";
   const tax = inp(d.customer_tax_id, { maxlength: "30" }), tel = inp(d.customer_phone, { maxlength: "30", type: "tel" });
-  const idate = inp(d.issue_date, { type: "date", required: "" }), edate = inp(d.end_date, { type: "date" });
+  const idate = datePick(d.issue_date || today(), false), edate = datePick(d.end_date, true);
   const ref = inp(d.ref_number, { maxlength: "40" });
   const disc = inp(d.discount, { type: "number", step: "any", min: "0", inputmode: "decimal" });
   const vat = inp(d.vat_percent, { type: "number", step: "any", min: "0", max: "100", inputmode: "decimal" });
