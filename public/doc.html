@@ -32,7 +32,7 @@ body{margin:0;background:var(--desk);font:15px/1.6 var(--sans);color:#111a2c;-we
 .ttl{text-align:right}
 .ttl h1{margin:0;font-family:var(--serif);font-weight:600;font-size:1.75em;line-height:1.25;color:var(--ink)}
 .ttl small{display:block;color:var(--gold);font-size:.78em;font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin:2px 0 8px}
-.ttl div{font-size:.93em;white-space:nowrap}
+.ttl div{font-size:.93em}
 
 /* customer */
 .meta{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:16px 0 14px}
@@ -70,14 +70,8 @@ td.c:first-child{color:var(--muted)}
 pre{font:inherit;white-space:pre-wrap;margin:0}
 .err{padding:40px 22px;text-align:center;color:var(--bartx)}
 
-/* โหมดพิมพ์ (.pm): ตัวหนังสือและระยะกระชับขึ้น ให้จบในกระดาษ A4 หน้าเดียว รวมถึง iPad/iPhone ที่เผื่อขอบกระดาษมากกว่า */
-.pm .page{min-height:0;font-size:13.5px;line-height:1.5}
-.pm .lg{width:68px;height:68px}.pm .head{padding-bottom:10px}.pm .meta{margin:10px 0}
-.pm .box{padding:7px 12px}.pm th,.pm td{padding:5px 8px}
-.pm .tot div{padding:3px 8px}.pm .tot .g{padding:6px 8px}.pm .txt{margin:6px 0 10px}
-.pm .sig{margin-top:76px}.pm .sig .sgi{max-height:66px}
-@media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0;padding:6mm 0 0}@page{size:A4;margin:10mm 14mm}tr,.tot,.sig,.box{break-inside:avoid}}
-@media screen and (max-width:800px){html:not(.pm) .page{width:auto;margin:0;padding:22px 16px 16px;box-shadow:none}html:not(.pm) .head,html:not(.pm) .meta{display:block}html:not(.pm) .ttl{text-align:left;margin-top:12px}html:not(.pm) .sig{gap:14px}html:not(.pm) .meta .box{margin-bottom:10px}html:not(.pm) .txt{text-align:left}html:not(.pm) th,html:not(.pm) td{padding:7px 6px}}
+@media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0;padding:6mm 0 0}@page{size:A4;margin:12mm 14mm}tr,.tot,.sig,.box{break-inside:avoid}}
+@media screen and (max-width:800px){.page{width:auto;margin:0;padding:22px 16px 16px;box-shadow:none}.head,.meta{display:block}.ttl{text-align:left;margin-top:12px}.sig{gap:14px}.meta .box{margin-bottom:10px}.txt{text-align:left}th,td{padding:7px 6px}}
 </style>
 </head>
 <body>
@@ -149,6 +143,7 @@ async function main() {
 
   const back = el("a", null, "← กลับ", { href: "/docs" }), edit = el("a", null, "แก้ไข", { href: "/docs?edit=" + d.id });
   const pr = el("button", "p", "พิมพ์ / บันทึกเป็น PDF", { type: "button" });
+  pr.onclick = () => window.print();
   // ผู้ลงนามฝั่งร้าน: เลือกได้ 1 คน และเลือกได้ว่าจะใส่ลายเซ็นหรือไม่ (จำค่าล่าสุดไว้ในเครื่องนี้)
   const SIGS = sg && sg.ok && Array.isArray(sg.signers) ? sg.signers : [{ name: "พีรพัฒน์ มีสมนัย", image: "" }, { name: "อัญชลี ลาภทวีสุขสันต์", image: "" }];
   const SIGNERS = SIGS.map((x) => x.name);
@@ -189,21 +184,6 @@ async function main() {
     shot.disabled = false; shot.textContent = label;
   };
   bar.append(back, edit, pick, onBox, shot, pr);
-
-  // ก่อนพิมพ์: เปลี่ยนเป็นโหมดพิมพ์ แล้ววัดความสูงจริง ถ้ายาวเกินหน้า A4 ให้ย่อลงอัตโนมัติ (เผื่อขอบที่ Safari บน iPad เพิ่มเอง)
-  const FIT_H = 245 * 96 / 25.4; // ความสูงที่ใช้ได้ประมาณ 245 มม. (A4 297 มม. หักขอบบนล่าง และเผื่อหัวท้ายกระดาษที่ iPad/iPhone ใส่เพิ่ม)
-  const fitPrint = () => {
-    document.documentElement.classList.add("pm");
-    page.style.zoom = "";
-    const cs = getComputedStyle(page);
-    const h = page.scrollHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) + 23;
-    const z = Math.min(1, FIT_H / h);
-    if (z < 1) page.style.zoom = String(Math.floor(z * 100) / 100);
-  };
-  const endPrint = () => { document.documentElement.classList.remove("pm"); page.style.zoom = ""; };
-  window.addEventListener("beforeprint", fitPrint);
-  window.addEventListener("afterprint", endPrint);
-  pr.onclick = () => { fitPrint(); window.print(); };
 
   const T = TITLE[d.type];
   const page = el("div", "page");
