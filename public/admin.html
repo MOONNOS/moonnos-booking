@@ -45,6 +45,7 @@ button:hover,.lnk:hover{border-color:var(--acc2)}
 select{padding-right:8px;font-weight:500}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:140px}
 .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.dp{display:flex;gap:6px;flex:1 1 260px;min-width:0}.dp select{flex:1.3;min-width:0}.dp select:first-child{flex:.7}.dp select:last-child{flex:1.1}
 
 /* admin : open days and bookings */
 .s{padding:14px 0;border-top:1px solid var(--line)}
@@ -95,6 +96,26 @@ const TH = (s) => {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 };
+// ช่องเลือกวันที่แบบไทย: วัน / เดือน / ปี พ.ศ. (ส่งให้เซิร์ฟเวอร์เป็น ค.ศ. YYYY-MM-DD เหมือนเดิม)
+const MON = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+function datePick(startStr) {
+  const [ty, tm, td] = startStr.split("-").map(Number);
+  const node = el("div", "dp");
+  const dd = el("select", null, null, { "aria-label": "วัน" }), mm = el("select", null, null, { "aria-label": "เดือน" }), yy = el("select", null, null, { "aria-label": "ปี พ.ศ." });
+  MON.forEach((n, i) => mm.append(new Option(n, String(i + 1))));
+  for (let y = ty; y <= ty + 2; y++) yy.append(new Option("พ.ศ. " + (y + 543), String(y)));
+  const fillDays = () => {
+    const keep = Number(dd.value) || td, n = new Date(Number(yy.value), Number(mm.value), 0).getDate();
+    dd.textContent = "";
+    for (let i = 1; i <= n; i++) dd.append(new Option(String(i), String(i)));
+    dd.value = String(Math.min(keep, n));
+  };
+  mm.value = String(tm); yy.value = String(ty); fillDays();
+  mm.onchange = fillDays; yy.onchange = fillDays;
+  node.append(dd, mm, yy);
+  const p = (n) => String(n).padStart(2, "0");
+  return { node, get value() { return yy.value + "-" + p(mm.value) + "-" + p(dd.value); } };
+}
 async function api(path, opt) {
   const o = opt || {};
   const headers = { "Content-Type": "application/json" };
@@ -126,14 +147,15 @@ function showMain() {
   head.append(el("h1", null, "จัดการคิว มูนนอส"), nav);
 
   const add = el("div", "c"), f = el("form", "row");
-  const date = el("input", "grow", null, { type: "date", required: "", min: todayStr(), "aria-label": "วันที่" });
+  const date = datePick(todayStr());
   const cap = el("input", null, null, { type: "number", min: "0", max: "100", value: "5", style: "width:90px", "aria-label": "จำนวนคิว" });
   const save = el("button", "p", "เปิด/บันทึกวัน", { type: "submit" }), msg = el("p", "m", "", { id: "msg" });
-  f.append(date, cap, save);
+  f.append(date.node, cap, save);
   f.onsubmit = async (e) => {
     e.preventDefault(); msg.textContent = "";
+    if (date.value < todayStr()) { msg.textContent = "วันที่เลือกผ่านไปแล้ว กรุณาเลือกวันนี้หรือวันถัดไป"; return; }
     const r = await api("/api/admin/slots", { method: "PUT", body: JSON.stringify({ date: date.value, capacity: Number(cap.value) }) });
-    msg.textContent = r.ok ? "บันทึกแล้ว" : "บันทึกไม่สำเร็จ กรุณาตรวจวันที่และจำนวนคิว";
+    msg.textContent = r.ok ? "บันทึกแล้ว: " + TH(date.value) : "บันทึกไม่สำเร็จ กรุณาตรวจวันที่และจำนวนคิว";
     if (r.ok) load();
   };
   add.append(el("h2", null, "เปิดวันรับคิว"), f, el("p", "m", "ใส่จำนวนคิวต่อวัน (ใส่ 0 เพื่อปิดรับวันนั้น) ถ้าเลือกวันที่เคยเปิดไว้แล้ว จะเป็นการแก้จำนวนคิว"), msg);
