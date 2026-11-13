@@ -285,6 +285,8 @@ async function showSettings() {
   const box = el("div", "c"), form = el("form"), msg = el("p", "m", "", { id: "msg" });
   const mk = (k, label, multi) => { const i = multi ? el("textarea") : el("input"); i.value = st[k] || ""; i.dataset.k = k; return field(label, i); };
   form.append(mk("business_name", "ชื่อธุรกิจ / ผู้ออกเอกสาร"), mk("business_address", "ที่อยู่", true), mk("business_tax_id", "เลขประจำตัวผู้เสียภาษี (ถ้ามี)"), mk("business_phone", "เบอร์โทร"), mk("payment_info", "ช่องทางชำระเงิน (ขึ้นท้ายเอกสาร เช่น ธนาคาร เลขที่บัญชี ชื่อบัญชี)", true), mk("default_vat", "ภาษีมูลค่าเพิ่มเริ่มต้น (%) ใส่ 0 ถ้าไม่จดทะเบียน"));
+  form.append(el("h2", null, "ข้อมูลภาษาอังกฤษ (ใช้ตอนพิมพ์เอกสารเป็น English)"), el("p", "m", "ช่องไหนเว้นว่าง เอกสารภาษาอังกฤษจะใช้ข้อมูลภาษาไทยแทน"));
+  form.append(mk("business_name_en", "ชื่อธุรกิจ ภาษาอังกฤษ"), mk("business_address_en", "ที่อยู่ ภาษาอังกฤษ", true), mk("payment_info_en", "ช่องทางชำระเงิน ภาษาอังกฤษ", true), mk("signer_0_en", "ชื่อ พีรพัฒน์ มีสมนัย เป็นภาษาอังกฤษ"), mk("signer_1_en", "ชื่อ อัญชลี ลาภทวีสุขสันต์ เป็นภาษาอังกฤษ"));
   form.append(el("p", "m", "ข้อมูลเหล่านี้จะขึ้นบนหัวเอกสาร ช่องที่ยังว่างจะแสดงเป็นป้ายสีเหลือง [ ] ในเอกสาร ควรตรวจสอบเรื่องภาษีกับนักบัญชีก่อนใช้งานจริง"), msg);
   const save = el("button", "p", "บันทึก", { type: "submit" }); form.append(save);
   form.onsubmit = async (e) => {
