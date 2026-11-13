@@ -33,6 +33,7 @@ body{margin:0;background:var(--desk);font:15px/1.6 var(--sans);color:#111a2c;-we
 .ttl h1{margin:0;font-family:var(--serif);font-weight:600;font-size:1.75em;line-height:1.25;color:var(--ink)}
 .ttl small{display:block;color:var(--gold);font-size:.78em;font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin:2px 0 8px}
 .ttl div{font-size:.93em;white-space:nowrap}
+html[lang="en"] .ttl small{letter-spacing:.04em;font-size:.85em}
 
 /* customer */
 .meta{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:16px 0 14px}
@@ -131,7 +132,43 @@ function bahtText(n) {
   return intText(String(baht)) + "บาท" + (sat ? intText(String(sat)) + "สตางค์" : "ถ้วน");
 }
 
+// จำนวนเงินตัวอักษรภาษาอังกฤษ เช่น One Thousand Eight Hundred Baht Only
+function bahtTextEn(n) {
+  const A = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const B = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const h = (x) => { // 0-999
+    const o = [];
+    if (x >= 100) { o.push(A[Math.floor(x / 100)] + " Hundred"); x %= 100; }
+    if (x >= 20) { o.push(B[Math.floor(x / 10)] + (x % 10 ? "-" + A[x % 10] : "")); } else if (x) o.push(A[x]);
+    return o.join(" ");
+  };
+  const words = (x) => {
+    if (!x) return "Zero";
+    const o = [];
+    [[1e9, "Billion"], [1e6, "Million"], [1e3, "Thousand"], [1, ""]].forEach(([u, name]) => {
+      const c = Math.floor(x / u) % 1000;
+      if (c) o.push(h(c) + (name ? " " + name : ""));
+    });
+    return o.join(" ");
+  };
+  const cents = Math.round(Number(n) * 100), baht = Math.floor(cents / 100), sat = cents % 100;
+  return words(baht) + " Baht" + (sat ? " and " + words(sat) + " Satang" : " Only");
+}
+
 const TITLE = { quotation: ["ใบเสนอราคา", "Quotation"], billing: ["ใบวางบิล", "Billing Note"], receipt: ["ใบเสร็จรับเงิน", "Receipt"] };
+// ข้อความบนเอกสาร 2 ภาษา
+const TXT = {
+  th: { no: "เลขที่: ", date: "วันที่: ", valid: "ใช้ได้ถึงวันที่: ", due: "กำหนดชำระ: ", refQ: "อ้างอิงใบเสนอราคา: ", refB: "อ้างอิงใบวางบิล: ", tax: "เลขประจำตัวผู้เสียภาษี: ", tel: "โทร: ",
+    to: { quotation: "เสนอราคาให้", billing: "วางบิลถึง", receipt: "ได้รับเงินจาก" }, cols: ["ลำดับ", "รายการ", "จำนวน", "ราคา/หน่วย", "จำนวนเงิน"],
+    sub: "รวมเป็นเงิน", disc: "ส่วนลด", vat: "ภาษีมูลค่าเพิ่ม ", total: "รวมทั้งสิ้น", notes: "หมายเหตุ", pay: "ช่องทางชำระเงิน", sdate: "วันที่ ........ / ........ / ........", cancel: "ยกเลิก",
+    sig: { quotation: ["ผู้เสนอราคา", "ผู้อนุมัติสั่งซื้อ"], billing: ["ผู้วางบิล", "ผู้รับวางบิล"], receipt: ["ผู้รับเงิน", "ผู้จ่ายเงิน"] },
+    ph: { name: "[ชื่อธุรกิจ]", addr: "[ที่อยู่]", tax: "[เลขประจำตัวผู้เสียภาษี]", tel: "[เบอร์โทร]" } },
+  en: { no: "No.: ", date: "Date: ", valid: "Valid until: ", due: "Due date: ", refQ: "Ref. Quotation: ", refB: "Ref. Billing Note: ", tax: "Tax ID: ", tel: "Tel: ",
+    to: { quotation: "Quotation to", billing: "Bill to", receipt: "Received from" }, cols: ["No.", "Description", "Qty", "Unit price", "Amount"],
+    sub: "Subtotal", disc: "Discount", vat: "VAT ", total: "Grand total", notes: "Notes", pay: "Payment details", sdate: "Date ........ / ........ / ........", cancel: "CANCELLED",
+    sig: { quotation: ["Quoted by", "Approved by"], billing: ["Billed by", "Received by"], receipt: ["Received by", "Paid by"] },
+    ph: { name: "[Business name]", addr: "[Address]", tax: "[Tax ID]", tel: "[Phone]" } },
+};
 
 async function main() {
   const token = sessionStorage.getItem("t") || "";
@@ -146,17 +183,34 @@ async function main() {
   if (!a.ok) { app.append(el("p", "err", "ไม่พบเอกสาร หรือหมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่ที่หน้าแอดมิน")); return; }
   const d = a.doc, s = b.settings || {};
   document.title = d.number;
+  // ภาษาเอกสาร: ไทย หรือ English (จำค่าล่าสุดไว้ในเครื่องนี้)
+  let lang = "th";
+  try { if (localStorage.getItem("doclang") === "en") lang = "en"; } catch (e) {}
+  const q = new URLSearchParams(location.search).get("lang");
+  if (q === "en" || q === "th") lang = q;
+  const EN = lang === "en", L = TXT[lang];
+  document.documentElement.lang = lang;
+  const pickS = (k) => (EN && s[k + "_en"]) || s[k];
+  const fmtDate = (x) => { const [y, m, dd] = x.split("-").map(Number); return EN ? new Date(y, m - 1, dd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : THD(x); };
 
   const back = el("a", null, "← กลับ", { href: "/docs" }), edit = el("a", null, "แก้ไข", { href: "/docs?edit=" + d.id });
   const pr = el("button", "p", "พิมพ์ / บันทึกเป็น PDF", { type: "button" });
   // ผู้ลงนามฝั่งร้าน: เลือกได้ 1 คน และเลือกได้ว่าจะใส่ลายเซ็นหรือไม่ (จำค่าล่าสุดไว้ในเครื่องนี้)
   const SIGS = sg && sg.ok && Array.isArray(sg.signers) ? sg.signers : [{ name: "พีรพัฒน์ มีสมนัย", image: "" }, { name: "อัญชลี ลาภทวีสุขสันต์", image: "" }];
   const SIGNERS = SIGS.map((x) => x.name);
+  const showName = (n) => (EN && s["signer_" + SIGNERS.indexOf(n) + "_en"]) || n;
+  const langSel = document.createElement("select");
+  langSel.setAttribute("aria-label", "ภาษาเอกสาร");
+  [["th", "ภาษาไทย"], ["en", "English"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; if (v === lang) o.selected = true; langSel.append(o); });
+  langSel.onchange = () => {
+    try { localStorage.setItem("doclang", langSel.value); } catch (e) {}
+    const u = new URL(location.href); u.searchParams.set("lang", langSel.value); location.replace(u.toString());
+  };
   let signer = SIGNERS[0], sigOn = true;
   try { const v = localStorage.getItem("signer"); if (SIGNERS.indexOf(v) >= 0) signer = v; sigOn = localStorage.getItem("sigon") !== "0"; } catch (e) {}
   const pick = el("label", "sgl", "ผู้ลงนาม"), sel = document.createElement("select");
   sel.setAttribute("aria-label", "ผู้ลงนามฝั่งร้าน");
-  SIGNERS.forEach((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n; if (n === signer) o.selected = true; sel.append(o); });
+  SIGNERS.forEach((n) => { const o = document.createElement("option"); o.value = n; o.textContent = showName(n); if (n === signer) o.selected = true; sel.append(o); });
   pick.append(sel);
   const onBox = el("label", "sgl"), chk = document.createElement("input");
   chk.type = "checkbox"; chk.checked = sigOn; onBox.append(chk, "ใส่ลายเซ็น");
@@ -188,7 +242,7 @@ async function main() {
     }
     shot.disabled = false; shot.textContent = label;
   };
-  bar.append(back, edit, pick, onBox, shot, pr);
+  bar.append(back, edit, langSel, pick, onBox, shot, pr);
 
   // ก่อนพิมพ์: เปลี่ยนเป็นโหมดพิมพ์ แล้ววัดความสูงจริง ถ้ายาวเกินหน้า A4 ให้ย่อลงอัตโนมัติ (เผื่อขอบที่ Safari บน iPad เพิ่มเอง)
   const FIT_H = 245 * 96 / 25.4; // ความสูงที่ใช้ได้ประมาณ 245 มม. (A4 297 มม. หักขอบบนล่าง และเผื่อหัวท้ายกระดาษที่ iPad/iPhone ใส่เพิ่ม)
@@ -207,28 +261,28 @@ async function main() {
 
   const T = TITLE[d.type];
   const page = el("div", "page");
-  if (d.status === "cancelled") page.append(el("div", "wm", "ยกเลิก"));
+  if (d.status === "cancelled") page.append(el("div", "wm", L.cancel));
 
   const head = el("div", "head"), biz = el("div", "biz"), ttl = el("div", "ttl");
-  biz.append(el("b", null, s.business_name || "[ชื่อธุรกิจ]"), el("div", null, s.business_address || "[ที่อยู่]"));
-  biz.append(el("div", null, "เลขประจำตัวผู้เสียภาษี: " + (s.business_tax_id || "[เลขประจำตัวผู้เสียภาษี]")), el("div", null, "โทร: " + (s.business_phone || "[เบอร์โทร]")), el("div", null, "LINE: parker.n1"));
-  ttl.append(el("h1", null, T[0]), el("small", null, T[1]), el("div", null, "เลขที่: " + d.number), el("div", null, "วันที่: " + THD(d.issue_date)));
-  if (d.end_date) ttl.append(el("div", null, (d.type === "quotation" ? "ใช้ได้ถึงวันที่: " : "กำหนดชำระ: ") + THD(d.end_date)));
-  if (d.ref_number) ttl.append(el("div", null, (d.type === "receipt" ? "อ้างอิงใบวางบิล: " : "อ้างอิงใบเสนอราคา: ") + d.ref_number));
+  biz.append(el("b", null, pickS("business_name") || L.ph.name), el("div", null, pickS("business_address") || L.ph.addr));
+  biz.append(el("div", null, L.tax + (s.business_tax_id || L.ph.tax)), el("div", null, L.tel + (s.business_phone || L.ph.tel)), el("div", null, "LINE: parker.n1"));
+  ttl.append(el("h1", null, EN ? T[1] : T[0]), el("small", null, EN ? T[0] : T[1]), el("div", null, L.no + d.number), el("div", null, L.date + fmtDate(d.issue_date)));
+  if (d.end_date) ttl.append(el("div", null, (d.type === "quotation" ? L.valid : L.due) + fmtDate(d.end_date)));
+  if (d.ref_number) ttl.append(el("div", null, (d.type === "receipt" ? L.refB : L.refQ) + d.ref_number));
   const left = el("div", "left"), lg = document.createElement("img");
   lg.src = "/logo.jpg"; lg.alt = "Moonnos"; lg.className = "lg"; lg.onerror = function () { lg.remove(); };
   left.append(lg, biz);
   head.append(left, ttl);
 
   const cust = el("div", "box");
-  cust.append(el("h3", null, d.type === "quotation" ? "เสนอราคาให้" : d.type === "receipt" ? "ได้รับเงินจาก" : "วางบิลถึง"), el("b", null, d.customer_name));
+  cust.append(el("h3", null, L.to[d.type]), el("b", null, d.customer_name));
   if (d.customer_address) cust.append(el("div", null, d.customer_address));
-  if (d.customer_tax_id) cust.append(el("div", null, "เลขประจำตัวผู้เสียภาษี: " + d.customer_tax_id));
-  if (d.customer_phone) cust.append(el("div", null, "โทร: " + d.customer_phone));
+  if (d.customer_tax_id) cust.append(el("div", null, L.tax + d.customer_tax_id));
+  if (d.customer_phone) cust.append(el("div", null, L.tel + d.customer_phone));
   const meta = el("div", "meta"); meta.append(cust);
 
   const tb = el("table"), thead = el("tr");
-  ["ลำดับ", "รายการ", "จำนวน", "ราคา/หน่วย", "จำนวนเงิน"].forEach((x, i) => thead.append(el("th", i === 1 ? null : "c", x)));
+  L.cols.forEach((x, i) => thead.append(el("th", i === 1 ? null : "c", x)));
   tb.append(thead);
   d.items.forEach((it, i) => {
     const tr = el("tr");
@@ -238,23 +292,24 @@ async function main() {
 
   const tot = el("div", "tot");
   const line = (l, v, c) => { const r = el("div", c || ""); r.append(el("span", null, l), el("span", null, money(v))); tot.append(r); };
-  line("รวมเป็นเงิน", d.subtotal);
-  if (d.discount > 0) line("ส่วนลด", d.discount);
-  if (d.vat_percent > 0) line("ภาษีมูลค่าเพิ่ม " + d.vat_percent + "%", d.vat_amount);
-  line("รวมทั้งสิ้น", d.total, "g");
+  line(L.sub, d.subtotal);
+  if (d.discount > 0) line(L.disc, d.discount);
+  if (d.vat_percent > 0) line(L.vat + d.vat_percent + "%", d.vat_amount);
+  line(L.total, d.total, "g");
 
-  page.append(head, meta, tb, tot, el("div", "txt", "(" + bahtText(d.total) + ")"));
-  if (d.notes) { const n = el("div", "box"); n.append(el("h3", null, "หมายเหตุ"), el("pre", null, d.notes)); page.append(n); }
-  if (s.payment_info && d.type !== "receipt") { const n = el("div", "box"); n.style.marginTop = "8px"; n.append(el("h3", null, "ช่องทางชำระเงิน"), el("pre", null, s.payment_info)); page.append(n); }
+  page.append(head, meta, tb, tot, el("div", "txt", "(" + (EN ? bahtTextEn(d.total) : bahtText(d.total)) + ")"));
+  if (d.notes) { const n = el("div", "box"); n.append(el("h3", null, L.notes), el("pre", null, d.notes)); page.append(n); }
+  const payInfo = pickS("payment_info");
+  if (payInfo && d.type !== "receipt") { const n = el("div", "box"); n.style.marginTop = "8px"; n.append(el("h3", null, L.pay), el("pre", null, payInfo)); page.append(n); }
   const sig = el("div", "sig");
-  const SIG = { quotation: ["ผู้เสนอราคา", "ผู้อนุมัติสั่งซื้อ"], billing: ["ผู้วางบิล", "ผู้รับวางบิล"], receipt: ["ผู้รับเงิน", "ผู้จ่ายเงิน"] }[d.type];
-  const sigName = el("span", "sn", "(" + signer + ")"), sigImg = document.createElement("img");
+  const SIG = L.sig[d.type];
+  const sigName = el("span", "sn", "(" + showName(signer) + ")"), sigImg = document.createElement("img");
   sigImg.className = "sgi"; sigImg.alt = "";
-  const sigShop = el("div"); sigShop.append(sigImg, sigName, el("span", "sr", SIG[0]), el("span", "sd", "วันที่ ........ / ........ / ........"));
-  const sigCust = el("div"); sigCust.append(el("span", "sn", "(......................................................)"), el("span", "sr", SIG[1]), el("span", "sd", "วันที่ ........ / ........ / ........"));
+  const sigShop = el("div"); sigShop.append(sigImg, sigName, el("span", "sr", SIG[0]), el("span", "sd", L.sdate));
+  const sigCust = el("div"); sigCust.append(el("span", "sn", "(......................................................)"), el("span", "sr", SIG[1]), el("span", "sd", L.sdate));
   const drawSig = () => {
     const x = SIGS[SIGNERS.indexOf(signer)] || {};
-    sigName.textContent = "(" + signer + ")";
+    sigName.textContent = "(" + showName(signer) + ")";
     if (sigOn && x.image) { sigImg.src = x.image; sigImg.hidden = false; } else { sigImg.removeAttribute("src"); sigImg.hidden = true; }
   };
   sel.onchange = () => { signer = sel.value; try { localStorage.setItem("signer", signer); } catch (e) {} drawSig(); };
