@@ -12,7 +12,8 @@ const TYPES = {
   billing: { prefix: "BN", statuses: ["unpaid", "paid", "cancelled"], first: "unpaid" },
   receipt: { prefix: "RC", statuses: ["issued", "cancelled"], first: "issued" },
 };
-const SETTING_KEYS = ["business_name", "business_address", "business_tax_id", "business_phone", "payment_info", "default_vat"];
+// *_en = ข้อมูลภาษาอังกฤษ ใช้ตอนพิมพ์เอกสารเป็นภาษาอังกฤษ (เว้นว่างได้ จะใช้ภาษาไทยแทน)
+const SETTING_KEYS = ["business_name", "business_address", "business_tax_id", "business_phone", "payment_info", "default_vat", "business_name_en", "business_address_en", "payment_info_en", "signer_0_en", "signer_1_en"];
 
 // ---------- ตั้งค่าข้อมูลร้าน ----------
 router.get("/settings", async (req, res, next) => {
